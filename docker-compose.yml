@@ -1,0 +1,58 @@
+services:
+  # ==========================================
+  # PostgreSQL Database
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: nlp-platform-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nlp_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nlp_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-nlp_platform}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nlp_user -d nlp_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ==========================================
+  # Go Backend
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nlp-platform-backend
+    environment:
+      APP_PORT: 8080
+      POSTGRES_DSN: postgres://${POSTGRES_USER:-nlp_user}:${POSTGRES_PASSWORD:-nlp_pass}@postgres:5432/${POSTGRES_DB:-nlp_platform}?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ==========================================
+  # React Frontend (dev mode via nginx in prod)
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nlp-platform-frontend
+    environment:
+      VITE_API_URL: http://localhost:8080
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
