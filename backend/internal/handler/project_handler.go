@@ -29,7 +29,8 @@ func NewProjectHandler(svc domain.ProjectService) *ProjectHandler {
 
 // GetAll godoc — GET /api/v1/projects
 func (h *ProjectHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	projects, err := h.svc.GetAll()
+	user, _ := GetUserFromContext(r.Context())
+	projects, err := h.svc.GetAll(user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить список проектов")
 		return
@@ -40,7 +41,8 @@ func (h *ProjectHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 // GetByID godoc — GET /api/v1/projects/{id}
 func (h *ProjectHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	project, err := h.svc.GetByID(id)
+	user, _ := GetUserFromContext(r.Context())
+	project, err := h.svc.GetByID(id, user.ID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Проект не найден")
 		return
@@ -56,7 +58,8 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.svc.Create(&req)
+	user, _ := GetUserFromContext(r.Context())
+	project, err := h.svc.Create(user.ID, &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -74,7 +77,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	project, err := h.svc.Update(id, &req)
+	user, _ := GetUserFromContext(r.Context())
+	project, err := h.svc.Update(id, user.ID, &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -85,7 +89,8 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete godoc — DELETE /api/v1/projects/{id}
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.svc.Delete(id); err != nil {
+	user, _ := GetUserFromContext(r.Context())
+	if err := h.svc.Delete(id, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось удалить проект")
 		return
 	}

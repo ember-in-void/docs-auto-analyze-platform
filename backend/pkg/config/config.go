@@ -12,8 +12,10 @@ import (
 
 // Config holds all application configuration values.
 type Config struct {
-	AppPort     string
-	PostgresDSN string
+	AppPort       string
+	PostgresDSN   string
+	JWTSecret     string
+	NLPServiceURL string
 }
 
 // ==========================================
@@ -33,8 +35,20 @@ func Load() (*Config, error) {
 		port = "8080"
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "very-secret-key-change-it"
+	}
+
+	nlpURL := os.Getenv("NLP_SERVICE_URL")
+	if nlpURL == "" {
+		nlpURL = "http://localhost:5000"
+	}
+
 	return &Config{
-		AppPort:     port,
-		PostgresDSN: dsn,
+		AppPort:       port,
+		PostgresDSN:   dsn,
+		JWTSecret:     jwtSecret,
+		NLPServiceURL: nlpURL,
 	}, nil
 }

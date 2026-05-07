@@ -1,20 +1,19 @@
+// ==========================================
+// useProjects — Custom hook for projects CRUD
+// ==========================================
 import { useState, useEffect, useCallback } from 'react'
-import { getProjects, createProject, updateProject, deleteProject } from '../api/projects'
+import * as api from '../api/projects'
 
-// ==========================================
-// useProjects — Custom Hook
-// ==========================================
 export function useProjects() {
-  const [projects, setProjects]   = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState(null)
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState(null)
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true)
-    setError(null)
+  const load = useCallback(async () => {
     try {
-      const data = await getProjects()
-      setProjects(data ?? [])
+      setLoading(true)
+      const data = await api.getProjects()
+      setProjects(Array.isArray(data) ? data : [])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -22,24 +21,17 @@ export function useProjects() {
     }
   }, [])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => { load() }, [load])
 
-  const create = useCallback(async (payload) => {
-    const created = await createProject(payload)
+  const create = async (formData) => {
+    const created = await api.createProject(formData)
     setProjects((prev) => [created, ...prev])
-    return created
-  }, [])
+  }
 
-  const update = useCallback(async (id, payload) => {
-    const updated = await updateProject(id, payload)
-    setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)))
-    return updated
-  }, [])
-
-  const remove = useCallback(async (id) => {
-    await deleteProject(id)
+  const remove = async (id) => {
+    await api.deleteProject(id)
     setProjects((prev) => prev.filter((p) => p.id !== id))
-  }, [])
+  }
 
-  return { projects, loading, error, refetch: fetchAll, create, update, remove }
+  return { projects, loading, error, create, remove, refresh: load }
 }

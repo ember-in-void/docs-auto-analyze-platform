@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/rs/cors"
 
+	"nlp-platform/internal/domain"
 	"nlp-platform/internal/handler"
 )
 
@@ -17,6 +18,8 @@ import (
 
 // New creates the main application router with all registered routes.
 func New(
+	authH *handler.AuthHandler,
+	authSvc domain.AuthService,
 	projectH *handler.ProjectHandler,
 	documentH *handler.DocumentHandler,
 	predictionH *handler.PredictionHandler,
@@ -56,30 +59,41 @@ func New(
 	// ==========================================
 	r.Route("/api/v1", func(r chi.Router) {
 
-		// --- Projects ---
-		r.Route("/projects", func(r chi.Router) {
-			r.Get("/", projectH.GetAll)
-			r.Post("/", projectH.Create)
-
-			r.Route("/{projectId}", func(r chi.Router) {
-				r.Get("/", projectH.GetByID)
-				r.Put("/", projectH.Update)
-				r.Delete("/", projectH.Delete)
-
-				// --- Documents (nested under project) ---
-				r.Get("/documents", documentH.GetByProjectID)
-				r.Post("/documents", documentH.Create)
-
-				// --- Predictions (nested under project) ---
-				r.Get("/predictions", predictionH.GetByProjectID)
-				r.Post("/predictions/generate", predictionH.Generate)
-			})
+		// --- Public Auth ---
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", authH.Register)
+			r.Post("/login", authH.Login)
 		})
 
-		// --- Documents (standalone) ---
-		r.Route("/documents/{id}", func(r chi.Router) {
-			r.Get("/", documentH.GetByID)
-			r.Delete("/", documentH.Delete)
+		// --- Protected Routes ---
+		r.Group(func(r chi.Router) {
+			r.Use(handler.AuthMiddleware(authSvc))
+
+			// --- Projects ---
+			r.Route("/projects", func(r chi.Router) {
+				r.Get("/", projectH.GetAll)
+				r.Post("/", projectH.Create)
+
+				r.Route("/{projectId}", func(r chi.Router) {
+					r.Get("/", projectH.GetByID)
+					r.Put("/", projectH.Update)
+					r.Delete("/", projectH.Delete)
+
+					// --- Documents (nested under project) ---
+					r.Get("/documents", documentH.GetByProjectID)
+					r.Post("/documents", documentH.Create)
+
+					// --- Predictions (nested under project) ---
+					r.Get("/predictions", predictionH.GetByProjectID)
+					r.Post("/predictions/generate", predictionH.Generate)
+				})
+			})
+
+			// --- Documents (standalone) ---
+			r.Route("/documents/{id}", func(r chi.Router) {
+				r.Get("/", documentH.GetByID)
+				r.Delete("/", documentH.Delete)
+			})
 		})
 	})
 

@@ -1,0 +1,49 @@
+/* ==========================================
+   DocuAudit AI — Global Styles
+   ========================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- Base Layer Overrides --- */
+@layer base {
+  body {
+    @apply bg-navy text-gray-100 font-sans antialiased;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0B0F19; }
+  ::-webkit-scrollbar-thumb { background: #1F2937; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #374151; }
+}
+
+/* --- Reusable Component Classes --- */
+@layer components {
+  /* Glowing border effect */
+  .glow-border {
+    @apply border border-white/5 hover:border-electric/30 transition-all duration-500;
+    box-shadow: 0 0 0 0 rgba(0, 240, 255, 0);
+  }
+  .glow-border:hover {
+    box-shadow: 0 0 30px rgba(0, 240, 255, 0.05);
+  }
+
+  /* Gradient text utility */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-electric to-emerald;
+  }
+
+  /* Glass panel effect */
+  .glass {
+    @apply bg-surface/80 backdrop-blur-xl border border-white/5;
+  }
+}
+
+/* --- Utility Animations --- */
+@layer utilities {
+  .animation-delay-200 { animation-delay: 0.2s; }
+  .animation-delay-400 { animation-delay: 0.4s; }
+  .animation-delay-600 { animation-delay: 0.6s; }
+}

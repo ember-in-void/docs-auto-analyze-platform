@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,15 +16,20 @@ import (
 	"nlp-platform/internal/service"
 	"nlp-platform/pkg/config"
 	"nlp-platform/pkg/db"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	// ==========================================
-	// Configuration
+	// Logging Setup
 	// ==========================================
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"})
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		log.Fatal().Err(err).Msg("failed to load config")
 	}
 
 	// ==========================================
@@ -34,10 +38,10 @@ func main() {
 	ctx := context.Background()
 	pool, err := db.NewPool(ctx, cfg.PostgresDSN)
 	if err != nil {
-		log.Fatalf("db: %v", err)
+		log.Fatal().Err(err).Msg("failed to connect to database")
 	}
 	defer pool.Close()
-	log.Println("✓ Connected to PostgreSQL")
+	log.Info().Msg("✓ Connected to PostgreSQL")
 
 	// ==========================================
 	// Dependency Injection (Repositories)
@@ -45,13 +49,15 @@ func main() {
 	projectRepo := postgres.NewProjectRepository(pool)
 	documentRepo := postgres.NewDocumentRepository(pool)
 	predictionRepo := postgres.NewPredictionRepository(pool)
+	userRepo := postgres.NewUserRepository(pool)
 
 	// ==========================================
 	// Dependency Injection (Services)
 	// ==========================================
 	projectSvc := service.NewProjectService(projectRepo)
 	documentSvc := service.NewDocumentService(documentRepo)
-	predictionSvc := service.NewPredictionService(predictionRepo, documentRepo)
+	predictionSvc := service.NewPredictionService(predictionRepo, documentRepo, cfg.NLPServiceURL)
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
 
 	// ==========================================
 	// Dependency Injection (Handlers)
@@ -59,11 +65,12 @@ func main() {
 	projectH := handler.NewProjectHandler(projectSvc)
 	documentH := handler.NewDocumentHandler(documentSvc)
 	predictionH := handler.NewPredictionHandler(predictionSvc)
+	authH := handler.NewAuthHandler(authSvc)
 
 	// ==========================================
 	// HTTP Server
 	// ==========================================
-	r := router.New(projectH, documentH, predictionH)
+	r := router.New(authH, authSvc, projectH, documentH, predictionH)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.AppPort),
@@ -80,20 +87,20 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("✓ Server started on :%s", cfg.AppPort)
+		log.Info().Str("port", cfg.AppPort).Msg("🚀 Server started")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server: %v", err)
+			log.Fatal().Err(err).Msg("server failed")
 		}
 	}()
 
 	<-quit
-	log.Println("Shutting down server...")
+	log.Info().Msg("Shutting down server...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("server forced shutdown: %v", err)
+		log.Fatal().Err(err).Msg("server forced shutdown")
 	}
-	log.Println("Server stopped gracefully")
+	log.Info().Msg("Server stopped gracefully")
 }

@@ -13,6 +13,15 @@ bin/
 # IDEs
 .idea/
 .vscode/
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.python-version
 *.swp
 *.swo
 
@@ -27,3 +36,5 @@ Thumbs.db
 
 # Logs
 *.log
+
+*.venv

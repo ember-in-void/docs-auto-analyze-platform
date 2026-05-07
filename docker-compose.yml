@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nlp_pass}
       POSTGRES_DB: ${POSTGRES_DB:-nlp_platform}
     ports:
-      - "5433:5432"
+      - "${DB_PORT_HOST:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/migrations:/docker-entrypoint-initdb.d
@@ -29,13 +29,33 @@ services:
       dockerfile: Dockerfile
     container_name: nlp-platform-backend
     environment:
-      APP_PORT: 8080
+      APP_PORT: 8081
       POSTGRES_DSN: postgres://${POSTGRES_USER:-nlp_user}:${POSTGRES_PASSWORD:-nlp_pass}@postgres:5432/${POSTGRES_DB:-nlp_platform}?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-for-diploma}
+      NLP_SERVICE_URL: http://nlp-service:5000
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8081}:${APP_PORT:-8081}"
     depends_on:
       postgres:
         condition: service_healthy
+      nlp-service:
+        condition: service_started
+    restart: unless-stopped
+
+  # ==========================================
+  # Python NLP Service
+  # ==========================================
+  nlp-service:
+    build:
+      context: ./nlp-service
+      dockerfile: Dockerfile
+    container_name: nlp-platform-ai
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    expose:
+      - "5000"
     restart: unless-stopped
 
   # ==========================================
@@ -47,9 +67,9 @@ services:
       dockerfile: Dockerfile
     container_name: nlp-platform-frontend
     environment:
-      VITE_API_URL: http://localhost:8080
+      VITE_API_URL: http://localhost:8081
     ports:
-      - "3000:80"
+      - "${FRONTEND_PORT_HOST:-3000}:80"
     depends_on:
       - backend
     restart: unless-stopped

@@ -1,45 +1,39 @@
+// ==========================================
+// usePredictions — Hook for NLP analysis
+// ==========================================
 import { useState, useEffect, useCallback } from 'react'
-import { getPredictionsByProject, generatePrediction } from '../api/predictions'
+import * as api from '../api/predictions'
 
-// ==========================================
-// usePredictions — Custom Hook
-// ==========================================
 export function usePredictions(projectId) {
   const [predictions, setPredictions] = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [generating, setGenerating]   = useState(false)
-  const [error, setError]             = useState(null)
+  const [loading, setLoading]        = useState(true)
+  const [generating, setGenerating]  = useState(false)
 
-  const fetchAll = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!projectId) return
-    setLoading(true)
-    setError(null)
     try {
-      const data = await getPredictionsByProject(projectId)
-      setPredictions(data ?? [])
-    } catch (err) {
-      setError(err.message)
+      setLoading(true)
+      const data = await api.getPredictions(projectId)
+      setPredictions(Array.isArray(data) ? data : [])
+    } catch {
+      setPredictions([])
     } finally {
       setLoading(false)
     }
   }, [projectId])
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => { load() }, [load])
 
-  const generate = useCallback(async () => {
+  const generate = async () => {
     setGenerating(true)
-    setError(null)
     try {
-      const created = await generatePrediction(projectId)
-      setPredictions((prev) => [created, ...prev])
-      return created
-    } catch (err) {
-      setError(err.message)
-      throw err
+      const result = await api.generatePrediction(projectId)
+      setPredictions((prev) => [result, ...prev])
+      return result
     } finally {
       setGenerating(false)
     }
-  }, [projectId])
+  }
 
-  return { predictions, loading, generating, error, refetch: fetchAll, generate }
+  return { predictions, loading, generating, generate, refresh: load }
 }

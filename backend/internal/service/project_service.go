@@ -2,7 +2,7 @@
 package service
 
 import (
-	"fmt"
+	"errors"
 
 	"nlp-platform/internal/domain"
 )
@@ -24,40 +24,40 @@ func NewProjectService(repo domain.ProjectRepository) domain.ProjectService {
 // Business Logic
 // ==========================================
 
-func (s *projectService) GetAll() ([]*domain.Project, error) {
-	return s.repo.GetAll()
+func (s *projectService) GetAll(ownerID string) ([]*domain.Project, error) {
+	return s.repo.GetAll(ownerID)
 }
 
-func (s *projectService) GetByID(id string) (*domain.Project, error) {
+func (s *projectService) GetByID(id string, ownerID string) (*domain.Project, error) {
 	if id == "" {
-		return nil, fmt.Errorf("project id is required")
+		return nil, errors.New("id проекта обязателен")
 	}
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(id, ownerID)
 }
 
-func (s *projectService) Create(req *domain.CreateProjectRequest) (*domain.Project, error) {
+func (s *projectService) Create(ownerID string, req *domain.CreateProjectRequest) (*domain.Project, error) {
 	if req.Name == "" {
-		return nil, fmt.Errorf("project name is required")
+		return nil, errors.New("название проекта обязательно")
 	}
 	if req.Status == "" {
 		req.Status = domain.ProjectStatusActive
 	}
-	return s.repo.Create(req)
+	return s.repo.Create(ownerID, req)
 }
 
-func (s *projectService) Update(id string, req *domain.UpdateProjectRequest) (*domain.Project, error) {
+func (s *projectService) Update(id string, ownerID string, req *domain.UpdateProjectRequest) (*domain.Project, error) {
 	if id == "" {
-		return nil, fmt.Errorf("project id is required")
+		return nil, errors.New("id проекта обязателен")
 	}
 	if req.Name == "" {
-		return nil, fmt.Errorf("project name is required")
+		return nil, errors.New("название проекта обязательно")
 	}
-	return s.repo.Update(id, req)
+	return s.repo.Update(id, ownerID, req)
 }
 
-func (s *projectService) Delete(id string) error {
+func (s *projectService) Delete(id string, ownerID string) error {
 	if id == "" {
-		return fmt.Errorf("project id is required")
+		return errors.New("id проекта обязателен")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, ownerID)
 }

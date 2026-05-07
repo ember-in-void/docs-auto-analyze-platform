@@ -4,8 +4,11 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"strings"
 	"time"
 
@@ -53,11 +56,12 @@ type mockScoreResult struct {
 type predictionService struct {
 	repo    domain.PredictionRepository
 	docRepo domain.DocumentRepository
+	nlpURL  string
 }
 
 // NewPredictionService creates a new PredictionService.
-func NewPredictionService(repo domain.PredictionRepository, docRepo domain.DocumentRepository) domain.PredictionService {
-	return &predictionService{repo: repo, docRepo: docRepo}
+func NewPredictionService(repo domain.PredictionRepository, docRepo domain.DocumentRepository, nlpURL string) domain.PredictionService {
+	return &predictionService{repo: repo, docRepo: docRepo, nlpURL: nlpURL}
 }
 
 // ==========================================
@@ -68,15 +72,28 @@ func (s *predictionService) GetByProjectID(projectID string) ([]*domain.Predicti
 	return s.repo.GetByProjectID(projectID)
 }
 
-// Generate produces a mock NLP analysis for a project based on its documents.
-// TODO: Replace mockScore() with a gRPC call to the Python NLP microservice.
+// Generate produces a real NLP analysis for a project based on its documents.
 func (s *predictionService) Generate(projectID string) (*domain.Prediction, error) {
 	docs, err := s.docRepo.GetByProjectID(projectID)
 	if err != nil {
 		return nil, fmt.Errorf("predictionService.Generate: fetch docs: %w", err)
 	}
 
-	result := s.mockScore(docs)
+	if len(docs) == 0 {
+		return nil, fmt.Errorf("недостаточно документов для анализа")
+	}
+
+	// 1. Combine text
+	var sb strings.Builder
+	for _, d := range docs {
+		sb.WriteString(d.Title + "\n" + d.Content + "\n\n")
+	}
+
+	// 2. Call Python Service
+	result, err := s.callNLP(sb.String())
+	if err != nil {
+		return nil, fmt.Errorf("predictionService.Generate: nlp call: %w", err)
+	}
 
 	pred := &domain.Prediction{
 		ProjectID:          projectID,
@@ -85,11 +102,33 @@ func (s *predictionService) Generate(projectID string) (*domain.Prediction, erro
 		RelevanceScore:     result.Relevance,
 		Summary:            result.Summary,
 		Keywords:           result.Keywords,
-		ModelVersion:       "mock-v1",
+		ModelVersion:       "rubert-v1",
 		GeneratedAt:        time.Now(),
 	}
 
 	return s.repo.Create(pred)
+}
+
+// callNLP makes an HTTP request to the Python service.
+func (s *predictionService) callNLP(text string) (*mockScoreResult, error) {
+	payload, _ := json.Marshal(map[string]string{"text": text})
+
+	resp, err := http.Post(s.nlpURL+"/analyze", "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("nlp service returned status: %d", resp.StatusCode)
+	}
+
+	var res mockScoreResult
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		return nil, err
+	}
+
+	return &res, nil
 }
 
 // ==========================================

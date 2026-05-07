@@ -20,6 +20,7 @@ const (
 // Project represents an IT project in the system.
 type Project struct {
 	ID          string    `json:"id"`
+	OwnerID     string    `json:"owner_id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Status      string    `json:"status"`
@@ -51,11 +52,11 @@ type UpdateProjectRequest struct {
 
 // ProjectRepository defines data access operations for projects.
 type ProjectRepository interface {
-	GetAll() ([]*Project, error)
-	GetByID(id string) (*Project, error)
-	Create(req *CreateProjectRequest) (*Project, error)
-	Update(id string, req *UpdateProjectRequest) (*Project, error)
-	Delete(id string) error
+	GetAll(ownerID string) ([]*Project, error)
+	GetByID(id string, ownerID string) (*Project, error)
+	Create(ownerID string, req *CreateProjectRequest) (*Project, error)
+	Update(id string, ownerID string, req *UpdateProjectRequest) (*Project, error)
+	Delete(id string, ownerID string) error
 }
 
 // ==========================================
@@ -64,9 +65,9 @@ type ProjectRepository interface {
 
 // ProjectService defines business logic operations for projects.
 type ProjectService interface {
-	GetAll() ([]*Project, error)
-	GetByID(id string) (*Project, error)
-	Create(req *CreateProjectRequest) (*Project, error)
-	Update(id string, req *UpdateProjectRequest) (*Project, error)
-	Delete(id string) error
+	GetAll(ownerID string) ([]*Project, error)
+	GetByID(id string, ownerID string) (*Project, error)
+	Create(ownerID string, req *CreateProjectRequest) (*Project, error)
+	Update(id string, ownerID string, req *UpdateProjectRequest) (*Project, error)
+	Delete(id string, ownerID string) error
 }
