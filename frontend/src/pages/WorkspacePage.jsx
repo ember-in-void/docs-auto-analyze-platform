@@ -2,34 +2,72 @@
 // WorkspacePage — Document upload & NER analysis
 // ==========================================
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import FileUpload from '../components/ui/FileUpload'
 import NerHighlighter from '../components/ui/NerHighlighter'
+import client from '../api/client'
 import GaugeChart from '../components/ui/GaugeChart'
 
-// --- Mock NER results (shown after "upload") ---
-const MOCK_TEXT = `Проект "CRM Migration" предполагает миграцию legacy-системы на платформу Salesforce с бюджетом 2.5 млн рублей. Дедлайн — 15 марта 2026. Исполнитель: ООО "ТехноСофт". Стек: React, Golang, PostgreSQL, Docker, Kubernetes.`
-
-const MOCK_ENTITIES = [
-  { text: 'Salesforce',    type: 'Technology',   start: 72, end: 82 },
-  { text: '2.5 млн рублей', type: 'Budget',      start: 95, end: 111 },
-  { text: '15 марта 2026',  type: 'Deadline',    start: 124, end: 138 },
-  { text: 'ООО "ТехноСофт"', type: 'Organization', start: 155, end: 171 },
-  { text: 'React',          type: 'Technology',   start: 179, end: 184 },
-  { text: 'Golang',         type: 'Technology',   start: 186, end: 192 },
-  { text: 'PostgreSQL',     type: 'Technology',   start: 194, end: 204 },
-  { text: 'Docker',         type: 'Technology',   start: 206, end: 212 },
-  { text: 'Kubernetes',     type: 'Technology',   start: 214, end: 224 },
-]
-
-const MOCK_SUMMARY = 'The CRM Migration project involves transitioning a legacy system to Salesforce. Key risk factors include tight deadline constraints and significant budget allocation. Technology stack is modern and well-suited for enterprise deployment.'
-
 export default function WorkspacePage() {
+  const { projectId } = useParams()
   const [uploaded, setUploaded] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  // State for real NLP results
+  const [documentText, setDocumentText] = useState('')
+  const [entities, setEntities] = useState([])
+  const [summary, setSummary] = useState('')
+  const [scores, setScores] = useState({ risk: 0, profitability: 0, relevance: 0 })
 
   async function handleUpload(file) {
-    // Simulate upload delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setUploaded(true)
+    if (!projectId) {
+      setError('Ошибка: отсутствует ID проекта (projectId в URL).')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setUploaded(false)
+
+    try {
+      // 1. Upload Document
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('doc_type', 'OTHER')
+
+      const docRes = await client.post(`/projects/${projectId}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      
+      setDocumentText(docRes.content || '')
+
+      // 2. Generate Prediction
+      const predRes = await client.post(`/projects/${projectId}/predictions/generate`)
+      
+      setSummary(predRes.summary || '')
+      setScores({
+        risk: predRes.risk_score || 0,
+        profitability: predRes.profitability_score || 0,
+        relevance: predRes.relevance_score || 0,
+      })
+      
+      // Parse entities JSON string if necessary
+      let parsedEntities = []
+      if (typeof predRes.entities === 'string') {
+        try { parsedEntities = JSON.parse(predRes.entities) } catch(e) {}
+      } else if (Array.isArray(predRes.entities)) {
+        parsedEntities = predRes.entities
+      }
+      setEntities(parsedEntities)
+
+      setUploaded(true)
+    } catch (err) {
+      console.error(err)
+      setError(err.message || 'Ошибка обработки документа.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -41,9 +79,17 @@ export default function WorkspacePage() {
           <p className="text-gray-400 mt-2">Upload IT documentation for automated NLP analysis and risk assessment.</p>
         </div>
 
+        {/* --- Error message --- */}
+        {error && (
+          <div className="mb-6 bg-crimson/10 border border-crimson/30 text-crimson p-4 rounded-xl">
+            {error}
+          </div>
+        )}
+
         {/* --- Upload Zone --- */}
         <div className="mb-12">
           <FileUpload onUpload={handleUpload} />
+          {loading && <p className="text-center text-gray-400 mt-4 animate-pulse">Анализ документа нейросетью...</p>}
         </div>
 
         {/* --- Results Panel (shown after upload) --- */}
@@ -52,13 +98,13 @@ export default function WorkspacePage() {
             {/* Score gauges */}
             <div className="grid grid-cols-3 gap-6">
               <div className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col items-center">
-                <GaugeChart value={72} label="Risk Level" color="#FF3366" />
+                <GaugeChart value={scores.risk} label="Risk Level" color="#FF3366" />
               </div>
               <div className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col items-center">
-                <GaugeChart value={85} label="Profitability" color="#00FF66" />
+                <GaugeChart value={scores.profitability} label="Profitability" color="#00FF66" />
               </div>
               <div className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col items-center">
-                <GaugeChart value={91} label="Relevance" color="#00F0FF" />
+                <GaugeChart value={scores.relevance} label="Relevance" color="#00F0FF" />
               </div>
             </div>
 
@@ -67,7 +113,7 @@ export default function WorkspacePage() {
               <h3 className="text-sm uppercase tracking-wider text-gray-500 font-semibold mb-4">
                 📋 Document Summary
               </h3>
-              <p className="text-gray-300 leading-relaxed">{MOCK_SUMMARY}</p>
+              <p className="text-gray-300 leading-relaxed">{summary}</p>
             </div>
 
             {/* NER Highlighted Text */}
@@ -75,8 +121,8 @@ export default function WorkspacePage() {
               <h3 className="text-sm uppercase tracking-wider text-gray-500 font-semibold mb-4">
                 🏷️ Named Entity Recognition
               </h3>
-              <div className="bg-navy rounded-xl p-6 border border-white/5">
-                <NerHighlighter text={MOCK_TEXT} entities={MOCK_ENTITIES} />
+              <div className="bg-navy rounded-xl p-6 border border-white/5 h-96 overflow-y-auto whitespace-pre-wrap">
+                <NerHighlighter text={documentText} entities={entities} />
               </div>
               {/* Entity legend */}
               <div className="flex flex-wrap gap-3 mt-5">

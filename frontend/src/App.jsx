@@ -33,7 +33,7 @@ function AppLayout() {
         <Route path="/dashboard" element={
           <ProtectedRoute><DashboardPage /></ProtectedRoute>
         } />
-        <Route path="/workspace" element={
+        <Route path="/workspace/:projectId" element={
           <ProtectedRoute><WorkspacePage /></ProtectedRoute>
         } />
         <Route path="/projects/:id" element={

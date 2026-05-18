@@ -65,7 +65,11 @@ func New(
 			r.Post("/login", authH.Login)
 		})
 
-		// --- Protected Routes ---
+		// ==========================================
+		// Protected Routes
+		// All routes in this group require a valid JWT token.
+		// Protects: /projects, /documents, /predictions
+		// ==========================================
 		r.Group(func(r chi.Router) {
 			r.Use(handler.AuthMiddleware(authSvc))
 

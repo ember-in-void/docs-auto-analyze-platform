@@ -98,7 +98,7 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if pErr != nil {
-			writeError(w, http.StatusInternalServerError, fmt.Sprintf("Ошибка парсинга файла: %v", pErr))
+			writeError(w, http.StatusUnprocessableEntity, fmt.Sprintf("Ошибка извлечения текста из файла (возможно, файл повреждён): %v", pErr))
 			return
 		}
 

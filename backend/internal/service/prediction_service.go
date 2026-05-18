@@ -41,12 +41,13 @@ var relevanceKeywords = []string{
 // Internal Types
 // ==========================================
 
-type mockScoreResult struct {
-	Profitability float64
-	Risk          float64
-	Relevance     float64
-	Keywords      []string
-	Summary       string
+type nlpAnalysisResult struct {
+	Profitability float64         `json:"profitability"`
+	Risk          float64         `json:"risk"`
+	Relevance     float64         `json:"relevance"`
+	Keywords      []string        `json:"keywords"`
+	Summary       string          `json:"summary"`
+	Entities      json.RawMessage `json:"entities"`
 }
 
 // ==========================================
@@ -102,20 +103,32 @@ func (s *predictionService) Generate(projectID string) (*domain.Prediction, erro
 		RelevanceScore:     result.Relevance,
 		Summary:            result.Summary,
 		Keywords:           result.Keywords,
-		ModelVersion:       "rubert-v1",
+		Entities:           result.Entities,
+		ModelVersion:       "rubert-tiny2",
 		GeneratedAt:        time.Now(),
 	}
 
 	return s.repo.Create(pred)
 }
 
-// callNLP makes an HTTP request to the Python service.
-func (s *predictionService) callNLP(text string) (*mockScoreResult, error) {
+// callNLP makes an HTTP request to the Python service with a 15-second timeout.
+func (s *predictionService) callNLP(text string) (*nlpAnalysisResult, error) {
 	payload, _ := json.Marshal(map[string]string{"text": text})
 
-	resp, err := http.Post(s.nlpURL+"/analyze", "application/json", bytes.NewBuffer(payload))
+	// Create a custom HTTP client with a timeout
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.nlpURL+"/analyze", bytes.NewBuffer(payload))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("nlp service request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -123,9 +136,14 @@ func (s *predictionService) callNLP(text string) (*mockScoreResult, error) {
 		return nil, fmt.Errorf("nlp service returned status: %d", resp.StatusCode)
 	}
 
-	var res mockScoreResult
+	var res nlpAnalysisResult
 	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decode nlp response: %w", err)
+	}
+
+	// If the python service doesn't return entities yet, make it an empty array instead of null
+	if res.Entities == nil || string(res.Entities) == "null" {
+		res.Entities = json.RawMessage("[]")
 	}
 
 	return &res, nil
@@ -137,9 +155,9 @@ func (s *predictionService) callNLP(text string) (*mockScoreResult, error) {
 
 // mockScore implements simple keyword-frequency analysis as a stand-in for NLP.
 // Scores are bounded to [0.1, 0.95] to avoid extreme edge cases.
-func (s *predictionService) mockScore(docs []*domain.Document) mockScoreResult {
+func (s *predictionService) mockScore(docs []*domain.Document) nlpAnalysisResult {
 	if len(docs) == 0 {
-		return mockScoreResult{
+		return nlpAnalysisResult{
 			Profitability: 0.50,
 			Risk:          0.50,
 			Relevance:     0.50,
@@ -178,7 +196,7 @@ func (s *predictionService) mockScore(docs []*domain.Document) mockScoreResult {
 		len(docs), len(found),
 	)
 
-	return mockScoreResult{
+	return nlpAnalysisResult{
 		Profitability: profitability,
 		Risk:          risk,
 		Relevance:     relevance,

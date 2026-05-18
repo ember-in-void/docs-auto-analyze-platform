@@ -29,7 +29,7 @@ func NewPredictionRepository(db *pgxpool.Pool) domain.PredictionRepository {
 func (r *predictionRepository) GetByProjectID(projectID string) ([]*domain.Prediction, error) {
 	const q = `
 		SELECT id, project_id, profitability_score, risk_score, relevance_score,
-		       summary, keywords, model_version, generated_at
+		       summary, keywords, entities, model_version, generated_at
 		FROM predictions
 		WHERE project_id = $1
 		ORDER BY generated_at DESC`
@@ -46,7 +46,7 @@ func (r *predictionRepository) GetByProjectID(projectID string) ([]*domain.Predi
 		if err := rows.Scan(
 			&p.ID, &p.ProjectID,
 			&p.ProfitabilityScore, &p.RiskScore, &p.RelevanceScore,
-			&p.Summary, &p.Keywords,
+			&p.Summary, &p.Keywords, &p.Entities,
 			&p.ModelVersion, &p.GeneratedAt,
 		); err != nil {
 			return nil, fmt.Errorf("predictionRepo.GetByProjectID: scan: %w", err)
@@ -63,10 +63,10 @@ func (r *predictionRepository) GetByProjectID(projectID string) ([]*domain.Predi
 func (r *predictionRepository) Create(p *domain.Prediction) (*domain.Prediction, error) {
 	const q = `
 		INSERT INTO predictions
-			(project_id, profitability_score, risk_score, relevance_score, summary, keywords, model_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+			(project_id, profitability_score, risk_score, relevance_score, summary, keywords, entities, model_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, project_id, profitability_score, risk_score, relevance_score,
-		          summary, keywords, model_version, generated_at`
+		          summary, keywords, entities, model_version, generated_at`
 
 	result := &domain.Prediction{}
 	err := r.db.QueryRow(context.Background(), q,
@@ -76,11 +76,12 @@ func (r *predictionRepository) Create(p *domain.Prediction) (*domain.Prediction,
 		p.RelevanceScore,
 		p.Summary,
 		p.Keywords,
+		p.Entities,
 		p.ModelVersion,
 	).Scan(
 		&result.ID, &result.ProjectID,
 		&result.ProfitabilityScore, &result.RiskScore, &result.RelevanceScore,
-		&result.Summary, &result.Keywords,
+		&result.Summary, &result.Keywords, &result.Entities,
 		&result.ModelVersion, &result.GeneratedAt,
 	)
 	if err != nil {
