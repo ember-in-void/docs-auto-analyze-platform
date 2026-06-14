@@ -8,10 +8,10 @@ import { useProjects } from '../hooks/useProjects'
 
 // --- Mock projects for demo (used when API returns empty) ---
 const MOCK_PROJECTS = [
-  { id: 'mock-1', name: 'CRM Migration Spec', description: 'Full migration plan for legacy CRM to cloud-native Salesforce integration.', status: 'active', created_at: '2026-04-15T10:00:00Z' },
-  { id: 'mock-2', name: 'Payment Gateway Architecture', description: 'Microservice design for PCI-DSS compliant payment processing system.', status: 'completed', created_at: '2026-03-22T08:30:00Z' },
-  { id: 'mock-3', name: 'Data Lake Infrastructure', description: 'AWS S3 + Apache Spark pipeline for real-time analytics and ML training.', status: 'active', created_at: '2026-04-01T14:00:00Z' },
-  { id: 'mock-4', name: 'Mobile App Refactor', description: 'React Native to Flutter migration with offline-first architecture.', status: 'archived', created_at: '2026-02-10T12:00:00Z' },
+  { id: 'mock-1', name: 'CRM Migration Spec', description: 'Full migration plan for legacy CRM to cloud-native Salesforce integration.', status: 'active', risk_score: 28, profitability_score: 82, created_at: '2026-04-15T10:00:00Z' },
+  { id: 'mock-2', name: 'Payment Gateway Architecture', description: 'Microservice design for PCI-DSS compliant payment processing system.', status: 'completed', risk_score: 15, profitability_score: 95, created_at: '2026-03-22T08:30:00Z' },
+  { id: 'mock-3', name: 'Data Lake Infrastructure', description: 'AWS S3 + Apache Spark pipeline for real-time analytics and ML training.', status: 'active', risk_score: 42, profitability_score: 74, created_at: '2026-04-01T14:00:00Z' },
+  { id: 'mock-4', name: 'Mobile App Refactor', description: 'React Native to Flutter migration with offline-first architecture.', status: 'archived', risk_score: 68, profitability_score: 35, created_at: '2026-02-10T12:00:00Z' },
 ]
 
 export default function DashboardPage() {

@@ -14,9 +14,9 @@ const STATUS_STYLES = {
 export default function ProjectCard({ project, onDelete }) {
   const status = STATUS_STYLES[project.status] || STATUS_STYLES.active
 
-  // Mock risk/profitability scores if not present
-  const risk = project.risk_score ?? Math.floor(Math.random() * 60 + 20)
-  const profit = project.profitability_score ?? Math.floor(Math.random() * 50 + 40)
+  // Use database-fetched NLP scores, fallback to 0
+  const risk = project.risk_score ?? 0
+  const profit = project.profitability_score ?? 0
 
   return (
     <div className="group relative bg-surface border border-white/5 rounded-2xl p-6 hover:border-electric/20 transition-all duration-500 hover:shadow-[0_0_40px_rgba(0,240,255,0.04)]">

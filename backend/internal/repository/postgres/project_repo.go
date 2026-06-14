@@ -28,10 +28,18 @@ func NewProjectRepository(db *pgxpool.Pool) domain.ProjectRepository {
 
 func (r *projectRepository) GetAll(ownerID string) ([]*domain.Project, error) {
 	const q = `
-		SELECT id, owner_id, name, description, status, created_at, updated_at
-		FROM projects
-		WHERE owner_id = $1
-		ORDER BY created_at DESC`
+		SELECT p.id, p.owner_id, p.name, p.description, p.status, p.created_at, p.updated_at,
+		       COALESCE(pr.risk_score, 0) as risk_score, COALESCE(pr.profitability_score, 0) as profitability_score
+		FROM projects p
+		LEFT JOIN LATERAL (
+			SELECT risk_score, profitability_score
+			FROM predictions
+			WHERE project_id = p.id
+			ORDER BY generated_at DESC
+			LIMIT 1
+		) pr ON TRUE
+		WHERE p.owner_id = $1
+		ORDER BY p.created_at DESC`
 
 	rows, err := r.db.Query(context.Background(), q, ownerID)
 	if err != nil {
@@ -42,7 +50,7 @@ func (r *projectRepository) GetAll(ownerID string) ([]*domain.Project, error) {
 	projects := make([]*domain.Project, 0)
 	for rows.Next() {
 		p := &domain.Project{}
-		if err := rows.Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt, &p.RiskScore, &p.ProfitabilityScore); err != nil {
 			return nil, fmt.Errorf("projectRepo.GetAll: scan: %w", err)
 		}
 		projects = append(projects, p)
@@ -52,13 +60,21 @@ func (r *projectRepository) GetAll(ownerID string) ([]*domain.Project, error) {
 
 func (r *projectRepository) GetByID(id string, ownerID string) (*domain.Project, error) {
 	const q = `
-		SELECT id, owner_id, name, description, status, created_at, updated_at
-		FROM projects
-		WHERE id = $1 AND owner_id = $2`
+		SELECT p.id, p.owner_id, p.name, p.description, p.status, p.created_at, p.updated_at,
+		       COALESCE(pr.risk_score, 0) as risk_score, COALESCE(pr.profitability_score, 0) as profitability_score
+		FROM projects p
+		LEFT JOIN LATERAL (
+			SELECT risk_score, profitability_score
+			FROM predictions
+			WHERE project_id = p.id
+			ORDER BY generated_at DESC
+			LIMIT 1
+		) pr ON TRUE
+		WHERE p.id = $1 AND p.owner_id = $2`
 
 	p := &domain.Project{}
 	err := r.db.QueryRow(context.Background(), q, id, ownerID).
-		Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt)
+		Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt, &p.RiskScore, &p.ProfitabilityScore)
 	if err != nil {
 		return nil, fmt.Errorf("projectRepo.GetByID: %w", err)
 	}

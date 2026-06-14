@@ -19,13 +19,15 @@ const (
 
 // Project represents an IT project in the system.
 type Project struct {
-	ID          string    `json:"id"`
-	OwnerID     string    `json:"owner_id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Status      string    `json:"status"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	OwnerID            string    `json:"owner_id"`
+	Name               string    `json:"name"`
+	Description        string    `json:"description"`
+	Status             string    `json:"status"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+	RiskScore          float64   `json:"risk_score"`
+	ProfitabilityScore float64   `json:"profitability_score"`
 }
 
 // ==========================================

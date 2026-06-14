@@ -1,7 +1,7 @@
 // ==========================================
 // App — Root component with routing
 // ==========================================
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Navbar from './components/layout/Navbar'
 import ProtectedRoute from './components/auth/ProtectedRoute'
@@ -33,11 +33,9 @@ function AppLayout() {
         <Route path="/dashboard" element={
           <ProtectedRoute><DashboardPage /></ProtectedRoute>
         } />
-        <Route path="/workspace/:projectId" element={
+        <Route path="/workspace" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/projects/:projectId" element={
           <ProtectedRoute><WorkspacePage /></ProtectedRoute>
-        } />
-        <Route path="/projects/:id" element={
-          <ProtectedRoute><DashboardPage /></ProtectedRoute>
         } />
 
         {/* 404 */}
