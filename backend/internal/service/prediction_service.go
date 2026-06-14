@@ -6,6 +6,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -97,6 +98,21 @@ func (s *predictionService) Generate(ctx context.Context, projectID string) (*do
 	}
 	combinedText := sb.String()
 
+	// Calculate SHA-256 hash of combined text
+	hash := sha256.Sum256([]byte(combinedText))
+	hashStr := fmt.Sprintf("%x", hash)
+
+	// Check if a completed prediction with this content hash already exists for this project
+	existing, err := s.repo.GetByProjectID(ctx, projectID)
+	if err == nil {
+		for _, p := range existing {
+			if p.Status == "completed" && p.GapAnalysis != nil && p.GapAnalysis.Metadata.ContentHash == hashStr {
+				log.Info().Str("project_id", projectID).Str("hash", hashStr).Msg("Found existing prediction with matching content hash. Returning cached prediction.")
+				return p, nil
+			}
+		}
+	}
+
 	// 2. Create placeholder prediction with status = "pending"
 	pred := &domain.Prediction{
 		ProjectID:        projectID,
@@ -162,6 +178,11 @@ func (s *predictionService) Generate(ctx context.Context, projectID string) (*do
 				GeneratedAt:      time.Now(),
 				GapAnalysis:      result.GapAnalysis,
 			}
+		}
+
+		// Inject the calculated content hash into the saved prediction metadata
+		if finalPred.GapAnalysis != nil {
+			finalPred.GapAnalysis.Metadata.ContentHash = hashStr
 		}
 
 		if err := s.repo.Update(context.Background(), &finalPred); err != nil {

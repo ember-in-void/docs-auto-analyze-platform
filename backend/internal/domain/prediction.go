@@ -109,6 +109,7 @@ type GapMetadata struct {
 	DocumentDate *string `json:"document_date"`
 	Deadline     *string `json:"deadline"`
 	Budget       *string `json:"budget"`
+	ContentHash  string  `json:"content_hash,omitempty"`
 }
 
 // GapPurposeSection holds results for project essence.

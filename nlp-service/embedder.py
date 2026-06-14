@@ -84,35 +84,49 @@ def get_embedding(text: str) -> np.ndarray:
         overlap = 64
         step = chunk_size - overlap
 
-        chunk_embs = []
+        input_ids_list = []
         for i in range(0, total_tokens, step):
             chunk_ids = input_ids[i:i + chunk_size]
             if len(chunk_ids) == 0:
                 break
-
-            # Add CLS and SEP tokens properly
+            
             chunk_ids_list = chunk_ids.tolist()
             input_ids_with_special = tokenizer.build_inputs_with_special_tokens(chunk_ids_list)
-            chunk_tensor = torch.tensor([input_ids_with_special]).to(device)
-            attention_mask = torch.ones_like(chunk_tensor).to(device)
+            input_ids_list.append(input_ids_with_special)
 
-            with torch.no_grad():
-                model_output = model(input_ids=chunk_tensor, attention_mask=attention_mask)
-            
-            # Extract CLS token embedding (index 0) and normalize it
-            cls_emb = model_output.last_hidden_state[:, 0, :]
-            cls_emb = torch.nn.functional.normalize(cls_emb)
-            chunk_embs.append(cls_emb[0].cpu().numpy())
-
-        if not chunk_embs:
+        if not input_ids_list:
             return np.zeros(312, dtype=np.float32)
 
-        # Mean pool of all chunk CLS embeddings
-        mean_emb = np.mean(chunk_embs, axis=0)
-        norm = np.linalg.norm(mean_emb)
-        if norm > 0:
-            mean_emb = mean_emb / norm
-        return mean_emb
+        # Pad all lists in input_ids_list to the maximum length among them
+        max_len = max(len(ids) for ids in input_ids_list)
+        padded_input_ids = []
+        padded_attention_masks = []
+        
+        pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+
+        for ids in input_ids_list:
+            padding_len = max_len - len(ids)
+            padded_ids = ids + [pad_token_id] * padding_len
+            padded_mask = [1] * len(ids) + [0] * padding_len
+            padded_input_ids.append(padded_ids)
+            padded_attention_masks.append(padded_mask)
+
+        # Create tensors and move to device
+        batch_input_ids = torch.tensor(padded_input_ids).to(device)
+        batch_attention_mask = torch.tensor(padded_attention_masks).to(device)
+
+        with torch.no_grad():
+            model_output = model(input_ids=batch_input_ids, attention_mask=batch_attention_mask)
+
+        # Extract normalized CLS token embeddings (index 0) for all chunks in the batch
+        cls_embeddings = model_output.last_hidden_state[:, 0, :]
+        cls_embeddings = torch.nn.functional.normalize(cls_embeddings)
+        
+        # Mean pool the embeddings across chunks and re-normalize
+        mean_emb_tensor = torch.mean(cls_embeddings, dim=0)
+        mean_emb_tensor = torch.nn.functional.normalize(mean_emb_tensor, dim=0)
+        
+        return mean_emb_tensor.cpu().numpy()
     except Exception as e:
         logger.error(f"Error in get_embedding: {e}")
         return np.zeros(312, dtype=np.float32)

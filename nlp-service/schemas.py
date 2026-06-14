@@ -36,6 +36,7 @@ class GapMetadata(BaseModel):
     document_date: Optional[str] = None
     deadline: Optional[str] = None
     budget: Optional[str] = None
+    content_hash: Optional[str] = None
 
 class GapPurposeSection(BaseModel):
     status: str
