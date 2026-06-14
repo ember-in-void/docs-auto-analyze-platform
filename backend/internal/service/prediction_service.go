@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"nlp-platform/internal/domain"
+
+	"github.com/rs/zerolog/log"
 )
 
 // ==========================================
@@ -93,27 +95,83 @@ func (s *predictionService) Generate(ctx context.Context, projectID string) (*do
 		}
 		sb.WriteString(d.Content)
 	}
+	combinedText := sb.String()
 
-	// 2. Call Python Service
-	result, err := s.callNLP(ctx, sb.String())
-	if err != nil {
-		return nil, fmt.Errorf("predictionService.Generate: nlp call: %w", err)
-	}
-
+	// 2. Create placeholder prediction with status = "pending"
 	pred := &domain.Prediction{
 		ProjectID:        projectID,
-		MetaInfo:         result.MetaInfo,
-		ExecutiveSummary: result.ExecutiveSummary,
-		TechStack:        result.TechStack,
-		Metrics:          result.Metrics,
-		Keywords:         result.TechStack.Detected,
-		Entities:         result.Entities,
-		ModelVersion:     "rubert-tiny2",
-		GeneratedAt:      time.Now(),
-		GapAnalysis:      result.GapAnalysis,
+		Status:           "pending",
+		MetaInfo:         domain.MetaInfo{Budget: "В процессе...", Timeline: "В процессе...", Domain: "В процессе..."},
+		ExecutiveSummary: "Анализ документа выполняется нейросетью. Пожалуйста, подождите...",
+		TechStack:        domain.TechStack{Detected: []string{}, Missing: []string{}},
+		Metrics: domain.MetricsList{
+			{Type: "risk", Label: "Уровень риска", Score: 0.0, Level: "Оценка...", Reasoning: "Расчет...", Recommendations: []string{}},
+			{Type: "profitability", Label: "Потенциал окупаемости", Score: 0.0, Level: "Оценка...", Reasoning: "Расчет...", Recommendations: []string{}},
+			{Type: "relevance", Label: "Соответствие требованиям", Score: 0.0, Level: "Оценка...", Reasoning: "Расчет...", Recommendations: []string{}},
+		},
+		Keywords:     []string{},
+		Entities:     json.RawMessage("[]"),
+		ModelVersion: "rubert-tiny2",
+		GeneratedAt:  time.Now(),
+		GapAnalysis:  nil,
 	}
 
-	return s.repo.Create(ctx, pred)
+	createdPred, err := s.repo.Create(ctx, pred)
+	if err != nil {
+		return nil, fmt.Errorf("predictionService.Generate: create pending prediction: %w", err)
+	}
+
+	// 3. Start background analysis goroutine
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		result, err := s.callNLP(bgCtx, combinedText)
+		var finalPred domain.Prediction
+
+		if err != nil {
+			log.Warn().Err(err).Str("project_id", projectID).Msg("NLP service call failed, falling back to mock scoring")
+			mockResult := s.mockScore(docs)
+
+			finalPred = domain.Prediction{
+				ID:               createdPred.ID,
+				ProjectID:        projectID,
+				Status:           "completed",
+				MetaInfo:         mockResult.MetaInfo,
+				ExecutiveSummary: mockResult.ExecutiveSummary + "\n\n(Внимание: Нейросеть недоступна, применен частотный анализ-заглушка)",
+				TechStack:        mockResult.TechStack,
+				Metrics:          mockResult.Metrics,
+				Keywords:         mockResult.TechStack.Detected,
+				Entities:         mockResult.Entities,
+				ModelVersion:     "rubert-tiny2-fallback",
+				GeneratedAt:      time.Now(),
+				GapAnalysis:      mockResult.GapAnalysis,
+			}
+		} else {
+			finalPred = domain.Prediction{
+				ID:               createdPred.ID,
+				ProjectID:        projectID,
+				Status:           "completed",
+				MetaInfo:         result.MetaInfo,
+				ExecutiveSummary: result.ExecutiveSummary,
+				TechStack:        result.TechStack,
+				Metrics:          result.Metrics,
+				Keywords:         result.TechStack.Detected,
+				Entities:         result.Entities,
+				ModelVersion:     "rubert-tiny2",
+				GeneratedAt:      time.Now(),
+				GapAnalysis:      result.GapAnalysis,
+			}
+		}
+
+		if err := s.repo.Update(context.Background(), &finalPred); err != nil {
+			log.Error().Err(err).Str("prediction_id", createdPred.ID).Msg("Failed to update prediction in background")
+		} else {
+			log.Info().Str("prediction_id", createdPred.ID).Msg("✓ Prediction analysis successfully completed and saved")
+		}
+	}()
+
+	return createdPred, nil
 }
 
 // callNLP makes an HTTP request to the Python service with a 15-second timeout.

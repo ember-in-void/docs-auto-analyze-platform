@@ -90,6 +90,37 @@ export default function WorkspacePage() {
     loadData()
   }, [projectId, navigate])
 
+  // Polling for pending prediction status
+  useEffect(() => {
+    if (!projectId || !analysisResult || analysisResult.status !== 'pending') return
+
+    let intervalId = setInterval(async () => {
+      try {
+        const preds = await client.get(`/projects/${projectId}/predictions`)
+        if (preds && preds.length > 0) {
+          const latestPred = preds[0]
+          if (latestPred.status !== 'pending') {
+            setAnalysisResult(latestPred)
+            
+            // Parse entities if complete
+            let parsedEntities = []
+            if (typeof latestPred.entities === 'string') {
+              try { parsedEntities = JSON.parse(latestPred.entities) } catch (e) {}
+            } else if (Array.isArray(latestPred.entities)) {
+              parsedEntities = latestPred.entities
+            }
+            setEntities(parsedEntities)
+            clearInterval(intervalId)
+          }
+        }
+      } catch (err) {
+        console.error('Error polling predictions:', err)
+      }
+    }, 3000)
+
+    return () => clearInterval(intervalId)
+  }, [projectId, analysisResult])
+
   async function handleUpload(file) {
     if (!projectId) {
       setError('Ошибка: отсутствует ID проекта (projectId в URL).')
@@ -195,7 +226,26 @@ export default function WorkspacePage() {
         </div>
 
         {/* --- Results Panel (shown after upload) --- */}
-        {uploaded && analysisResult && (
+        {uploaded && analysisResult && analysisResult.status === 'pending' && (
+          <div className="bg-surface border border-white/5 rounded-2xl p-10 text-center space-y-6 animate-fade-in">
+            <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-4 border-electric/10 border-t-electric animate-spin" />
+              <span className="text-3xl animate-pulse">🧠</span>
+            </div>
+            <div className="space-y-2 max-w-md mx-auto">
+              <h3 className="text-xl font-bold text-white">Идет нейросетевой аудит документа</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Запущен автоматический анализ ТЗ. Наша AI-модель извлекает метаданные, оценивает проектные риски и экономический потенциал. Это может занять до 1-2 минут...
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-electric/10 text-electric text-xs font-semibold animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-electric" />
+              Статус: Анализ текста
+            </div>
+          </div>
+        )}
+
+        {uploaded && analysisResult && analysisResult.status !== 'pending' && (
           <div className="space-y-8 animate-fade-in text-left">
             {/* Tab switch navigation */}
             <div className="flex border-b border-white/10 mb-6 gap-6">
@@ -657,6 +707,129 @@ export default function WorkspacePage() {
                             )}
                           </div>
                         </div>
+
+                        {/* Collapsible Section: Senior Risk & Profitability Audit */}
+                        {gapData && (
+                          <div className="bg-surface border border-white/5 rounded-2xl p-6 hover:border-white/10 transition-colors">
+                            <details className="group">
+                              <summary className="flex items-center justify-between cursor-pointer list-none">
+                                <div className="flex items-center gap-3">
+                                  <span className="text-lg">🛡️</span>
+                                  <span className="font-semibold text-sm text-white">Экспертная оценка рисков и затрат (Senior Risk Audit)</span>
+                                </div>
+                                <span className="transition group-open:rotate-180">
+                                  <svg fill="none" height="24" name="angle-down" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="24" className="text-gray-400">
+                                    <path d="M6 9l6 6 6-6"></path>
+                                  </svg>
+                                </span>
+                              </summary>
+                              
+                              <div className="mt-6 pt-5 border-t border-white/5 space-y-6 text-xs text-left">
+                                {/* Row 1: Complexity and Lock-in */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-gray-400 font-medium">Сложность интеграции:</span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                        gapData.integration_complexity === 'High' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                        gapData.integration_complexity === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                                        'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                      }`}>
+                                        {gapData.integration_complexity || 'Low'}
+                                      </span>
+                                    </div>
+                                    {gapData.integration_gaps?.length > 0 ? (
+                                      <ul className="list-disc list-inside space-y-1 text-gray-300">
+                                        {gapData.integration_gaps.map((item, idx) => (
+                                          <li key={idx}>{item}</li>
+                                        ))}
+                                      </ul>
+                                    ) : (
+                                      <p className="text-gray-500 italic">Сложные внешние интеграции не обнаружены</p>
+                                    )}
+                                  </div>
+
+                                  <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                                    <div className="flex justify-between items-center mb-2">
+                                      <span className="text-gray-400 font-medium">Риск вендор-лока (Vendor Lock-in):</span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                        gapData.vendor_lock_risk === 'High' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                        gapData.vendor_lock_risk === 'Medium' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                                        'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                      }`}>
+                                        {gapData.vendor_lock_risk || 'Low'}
+                                      </span>
+                                    </div>
+                                    <p className="text-gray-400 text-[11px] leading-relaxed">
+                                      {gapData.vendor_lock_risk === 'High' ? 'Внимание: высокий риск зависимости от коммерческих провайдеров / СУБД.' : 
+                                       gapData.vendor_lock_risk === 'Medium' ? 'Обнаружены облачные зависимости или привязка к платформе.' :
+                                       'Проект базируется на открытом ПО (Open Source). Высокая независимость.'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Row 2: OPEX & Infrastructure warnings */}
+                                <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                                  <h5 className="font-semibold text-white mb-3 flex items-center gap-1.5 text-xs">
+                                    <span>💸</span> Скрытые затраты и инфраструктура (OPEX & Infra)
+                                  </h5>
+                                  {gapData.opex_infra_warnings?.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {gapData.opex_infra_warnings.map((warn, idx) => (
+                                        <div key={idx} className="flex gap-2 items-start text-yellow-300/95 bg-yellow-500/5 p-2.5 rounded-lg border border-yellow-500/10">
+                                          <span>⚠️</span>
+                                          <span>{warn}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-gray-500 italic text-[11px]">Критических предупреждений по скрытым затратам не найдено</p>
+                                  )}
+                                </div>
+
+                                {/* Row 3: Suitability and Timeline Feasibility */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                                    <span className="text-gray-400 font-medium block mb-1">Адекватность архитектурного стека:</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block uppercase mb-2 ${
+                                      gapData.architecture_suitability === 'Overengineered' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                                      gapData.architecture_suitability === 'Underengineered' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                      'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    }`}>
+                                      {gapData.architecture_suitability === 'Overengineered' ? 'Overengineered (Избыточен)' :
+                                       gapData.architecture_suitability === 'Underengineered' ? 'Underengineered (Недостаточен)' :
+                                       'Suitable (Соответствует)'}
+                                    </span>
+                                    <p className="text-gray-400 text-[11px] leading-relaxed">
+                                      {gapData.architecture_suitability === 'Overengineered' ? 'Стек технологий слишком сложен для заявленных скромных бизнес-целей.' :
+                                       gapData.architecture_suitability === 'Underengineered' ? 'Архитектура не содержит важных элементов для обеспечения надежности или производительности.' :
+                                       'Выбранный стек технологий и архитектурные решения оптимально соответствуют масштабу проекта.'}
+                                    </p>
+                                  </div>
+
+                                  <div className="p-4 bg-white/5 rounded-xl border border-white/5">
+                                    <span className="text-gray-400 font-medium block mb-1">Оценка реалистичности сроков:</span>
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold inline-block uppercase mb-2 ${
+                                      gapData.feasibility_timeline === 'Unrealistic' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                      gapData.feasibility_timeline === 'Tight' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' :
+                                      'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                    }`}>
+                                      {gapData.feasibility_timeline === 'Unrealistic' ? 'Unrealistic (Нереалистичные)' :
+                                       gapData.feasibility_timeline === 'Tight' ? 'Tight (Сжатые)' :
+                                       'Realistic (Реалистичные)'}
+                                    </span>
+                                    <p className="text-gray-400 text-[11px] leading-relaxed">
+                                      {gapData.feasibility_timeline === 'Unrealistic' ? 'Сроки критически занижены относительно объема и сложности задач разработки.' :
+                                       gapData.feasibility_timeline === 'Tight' ? 'Сроки сжатые. Присутствует высокий риск задержки при форс-мажорных обстоятельствах.' :
+                                       'Сроки реализации выглядят адекватно и соответствуют сложности проекта.'}
+                                    </p>
+                                  </div>
+                                </div>
+
+                              </div>
+                            </details>
+                          </div>
+                        )}
 
                       </div>
                     </div>

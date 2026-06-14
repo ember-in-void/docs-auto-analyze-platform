@@ -55,7 +55,12 @@ def test_get():
         if len(predictions) > 0:
             print("Latest prediction details:")
             print(f"  Executive Summary: {predictions[0].get('executive_summary')}")
-            print(f"  Gap Analysis exists: {predictions[0].get('gap_analysis') is not None}")
+            gap_data = predictions[0].get('gap_analysis', {})
+            print(f"  Gap Analysis Metadata: {json.dumps(gap_data.get('metadata'), indent=2, ensure_ascii=False)}")
+            print("  Metrics:")
+            for m in predictions[0].get('metrics', []):
+                print(f"    - {m.get('label')} ({m.get('type')}): Score = {m.get('score')}%, Level = {m.get('level')}")
+                print(f"      Reasoning: {m.get('reasoning')}")
 
 if __name__ == "__main__":
     test_get()

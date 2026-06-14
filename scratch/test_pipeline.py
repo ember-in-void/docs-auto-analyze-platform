@@ -111,10 +111,8 @@ def run_test():
         print(f"Document upload failed: {e}")
         return
 
-    # 6. Generate Prediction (measures speed of Ollama execution)
-    print("Triggering document analysis (LLM query + Fallbacks if any)...")
-    start_time = time.time()
-    
+    # 6. Generate Prediction (triggers async execution)
+    print("Triggering document analysis (LLM query runs asynchronously)...")
     req = urllib.request.Request(
         f"{base_url}/api/v1/projects/{project_id}/predictions/generate",
         data=b"",  # POST requires data
@@ -126,35 +124,79 @@ def run_test():
     try:
         with urllib.request.urlopen(req) as resp:
             res = json.loads(resp.read().decode('utf-8'))
-            elapsed = time.time() - start_time
             pred = res["data"]
-            print(f"\n✓ Analysis completed successfully in {elapsed:.2f} seconds!")
-            print(f"==================================================")
-            print(f"Executive Summary:")
-            print(pred.get("executive_summary"))
-            print(f"--------------------------------------------------")
-            print(f"Metadata Extracted:")
-            meta = pred.get("meta_info", {})
-            print(f"  Budget: {meta.get('budget')}")
-            print(f"  Timeline: {meta.get('timeline')}")
-            print(f"  Domain: {meta.get('domain')}")
-            print(f"--------------------------------------------------")
-            
-            gap = pred.get("gap_analysis")
-            if gap:
-                print(f"Gap Analysis Details:")
-                print(f"  Completeness Score: {gap.get('completeness_score')}%")
-                print(f"  Clarifying Questions:")
-                for q in gap.get("clarifying_questions", []):
-                    print(f"    - {q}")
-                print(f"  Sections Statuses:")
-                for name, info in gap.get("sections", {}).items():
-                    print(f"    * {name}: {info.get('status')} (Gaps: {info.get('gaps')})")
-            else:
-                print("⚠ WARNING: gap_analysis structure is null!")
-            print(f"==================================================")
+            print(f"Prediction analysis request accepted. Status: {pred.get('status')}")
     except Exception as e:
-        print(f"Prediction generation failed: {e}")
+        print(f"Prediction trigger failed: {e}")
+        return
+
+    # 7. Poll status until completed or failed
+    print("Waiting for analysis to complete ", end="", flush=True)
+    start_time = time.time()
+    max_retries = 60
+    success = False
+    
+    for i in range(max_retries):
+        time.sleep(2)
+        print(".", end="", flush=True)
+        
+        status_req = urllib.request.Request(
+            f"{base_url}/api/v1/projects/{project_id}/predictions",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        try:
+            with urllib.request.urlopen(status_req) as resp:
+                status_res = json.loads(resp.read().decode('utf-8'))
+                preds = status_res["data"]
+                if preds:
+                    latest = preds[0]
+                    if latest.get("status") == "completed":
+                        pred = latest
+                        success = True
+                        break
+                    elif latest.get("status") == "failed":
+                        print("\nPrediction processing failed on backend.")
+                        return
+        except Exception as e:
+            print(f"\nError polling prediction: {e}")
+            return
+            
+    if not success:
+        print(f"\nPrediction timed out after {time.time() - start_time:.2f} seconds.")
+        return
+        
+    elapsed = time.time() - start_time
+    print(f"\n✓ Analysis completed successfully in {elapsed:.2f} seconds!")
+    print(f"==================================================")
+    print(f"Executive Summary:")
+    print(pred.get("executive_summary"))
+    print(f"--------------------------------------------------")
+    print(f"Metadata Extracted:")
+    meta = pred.get("meta_info", {})
+    print(f"  Budget: {meta.get('budget')}")
+    print(f"  Timeline: {meta.get('timeline')}")
+    print(f"  Domain: {meta.get('domain')}")
+    print(f"--------------------------------------------------")
+    
+    gap = pred.get("gap_analysis")
+    if gap:
+        print(f"Gap Analysis Details:")
+        print(f"  Completeness Score: {gap.get('completeness_score')}%")
+        print(f"  Clarifying Questions:")
+        for q in gap.get("clarifying_questions", []):
+            print(f"    - {q}")
+        print(f"  Sections Statuses:")
+        for name, info in gap.get("sections", {}).items():
+            print(f"    * {name}: {info.get('status')} (Gaps: {info.get('gaps')})")
+    else:
+        print("⚠ WARNING: gap_analysis structure is null!")
+    
+    print(f"--------------------------------------------------")
+    print("Metrics:")
+    for m in pred.get('metrics', []):
+        print(f"  - {m.get('label')} ({m.get('type')}): Score = {m.get('score')}%, Level = {m.get('level')}")
+        print(f"    Reasoning: {m.get('reasoning')}")
+    print(f"==================================================")
 
 if __name__ == "__main__":
     run_test()

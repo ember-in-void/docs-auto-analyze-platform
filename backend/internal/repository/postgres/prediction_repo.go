@@ -28,7 +28,7 @@ func NewPredictionRepository(db *pgxpool.Pool) domain.PredictionRepository {
 
 func (r *predictionRepository) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Prediction, error) {
 	const q = `
-		SELECT id, project_id, keywords, entities, model_version, generated_at,
+		SELECT id, project_id, status, keywords, entities, model_version, generated_at,
 		       meta_info, executive_summary, tech_stack, metrics, gap_analysis
 		FROM predictions
 		WHERE project_id = $1
@@ -44,7 +44,7 @@ func (r *predictionRepository) GetByProjectID(ctx context.Context, projectID str
 	for rows.Next() {
 		p := &domain.Prediction{}
 		if err := rows.Scan(
-			&p.ID, &p.ProjectID,
+			&p.ID, &p.ProjectID, &p.Status,
 			&p.Keywords, &p.Entities,
 			&p.ModelVersion, &p.GeneratedAt,
 			&p.MetaInfo, &p.ExecutiveSummary, &p.TechStack, &p.Metrics, &p.GapAnalysis,
@@ -74,17 +74,23 @@ func (r *predictionRepository) Create(ctx context.Context, p *domain.Prediction)
 		}
 	}
 
+	status := p.Status
+	if status == "" {
+		status = "completed"
+	}
+
 	const q = `
 		INSERT INTO predictions
-			(project_id, profitability_score, risk_score, relevance_score, summary, keywords, entities, model_version,
+			(project_id, status, profitability_score, risk_score, relevance_score, summary, keywords, entities, model_version,
 			 meta_info, executive_summary, tech_stack, metrics, gap_analysis)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		RETURNING id, project_id, keywords, entities, model_version, generated_at,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		RETURNING id, project_id, status, keywords, entities, model_version, generated_at,
 		          meta_info, executive_summary, tech_stack, metrics, gap_analysis`
 
 	result := &domain.Prediction{}
 	err := r.db.QueryRow(ctx, q,
 		p.ProjectID,
+		status,
 		profitabilityScore,
 		riskScore,
 		relevanceScore,
@@ -98,7 +104,7 @@ func (r *predictionRepository) Create(ctx context.Context, p *domain.Prediction)
 		p.Metrics,
 		p.GapAnalysis,
 	).Scan(
-		&result.ID, &result.ProjectID,
+		&result.ID, &result.ProjectID, &result.Status,
 		&result.Keywords, &result.Entities,
 		&result.ModelVersion, &result.GeneratedAt,
 		&result.MetaInfo, &result.ExecutiveSummary, &result.TechStack, &result.Metrics, &result.GapAnalysis,
@@ -107,4 +113,47 @@ func (r *predictionRepository) Create(ctx context.Context, p *domain.Prediction)
 		return nil, fmt.Errorf("predictionRepo.Create: %w", err)
 	}
 	return result, nil
+}
+
+func (r *predictionRepository) Update(ctx context.Context, p *domain.Prediction) error {
+	var profitabilityScore, riskScore, relevanceScore float64
+	for _, m := range p.Metrics {
+		switch m.Type {
+		case "profitability":
+			profitabilityScore = m.Score
+		case "risk":
+			riskScore = m.Score
+		case "relevance":
+			relevanceScore = m.Score
+		}
+	}
+
+	const q = `
+		UPDATE predictions
+		SET status = $2, profitability_score = $3, risk_score = $4, relevance_score = $5,
+		    summary = $6, keywords = $7, entities = $8, model_version = $9,
+		    meta_info = $10, executive_summary = $11, tech_stack = $12, metrics = $13,
+		    gap_analysis = $14
+		WHERE id = $1`
+
+	_, err := r.db.Exec(ctx, q,
+		p.ID,
+		p.Status,
+		profitabilityScore,
+		riskScore,
+		relevanceScore,
+		p.ExecutiveSummary,
+		p.Keywords,
+		p.Entities,
+		p.ModelVersion,
+		p.MetaInfo,
+		p.ExecutiveSummary,
+		p.TechStack,
+		p.Metrics,
+		p.GapAnalysis,
+	)
+	if err != nil {
+		return fmt.Errorf("predictionRepo.Update: %w", err)
+	}
+	return nil
 }

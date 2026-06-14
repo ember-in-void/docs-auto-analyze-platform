@@ -166,6 +166,13 @@ type GapAnalysisResult struct {
 	Sections            GapSections `json:"sections"`
 	CompletenessScore   float64     `json:"completeness_score"`
 	ClarifyingQuestions []string    `json:"clarifying_questions"`
+	// Advanced analysis fields:
+	IntegrationComplexity   string   `json:"integration_complexity,omitempty"`
+	IntegrationGaps         []string `json:"integration_gaps,omitempty"`
+	VendorLockRisk          string   `json:"vendor_lock_risk,omitempty"`
+	OpexInfraWarnings       []string `json:"opex_infra_warnings,omitempty"`
+	ArchitectureSuitability string   `json:"architecture_suitability,omitempty"`
+	FeasibilityTimeline     string   `json:"feasibility_timeline,omitempty"`
 }
 
 // Value implements driver.Valuer for database writes.
@@ -200,6 +207,7 @@ func (g *GapAnalysisResult) Scan(src interface{}) error {
 type Prediction struct {
 	ID               string             `json:"id"`
 	ProjectID        string             `json:"project_id"`
+	Status           string             `json:"status"`
 	MetaInfo         MetaInfo           `json:"meta_info"`
 	ExecutiveSummary string             `json:"executive_summary"`
 	TechStack        TechStack          `json:"tech_stack"`
@@ -219,6 +227,7 @@ type Prediction struct {
 type PredictionRepository interface {
 	GetByProjectID(ctx context.Context, projectID string) ([]*Prediction, error)
 	Create(ctx context.Context, p *Prediction) (*Prediction, error)
+	Update(ctx context.Context, p *Prediction) error
 }
 
 // ==========================================

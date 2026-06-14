@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/nguyenthenguyen/docx"
-	"rsc.io/pdf"
+	"github.com/ledongthuc/pdf"
 )
 
 // ==========================================
