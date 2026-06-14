@@ -778,9 +778,12 @@ def get_best_available_model() -> str:
             
             # Prioritized list of models
             priority_list = [
+                "qwen2.5:1.5b", "qwen2.5:1.5b-instruct",
+                "qwen2.5:0.5b", "qwen2.5:0.5b-instruct",
+                "qwen2.5:3b",
                 "llama3.1:8b", "llama3.1",
                 "llama3:8b", "llama3",
-                "qwen2.5:7b", "qwen2.5:3b", "qwen2.5:1.5b",
+                "qwen2.5:7b",
                 "gemma2:9b", "gemma2:2b",
                 "mistral:7b", "phi3"
             ]
@@ -979,13 +982,12 @@ async def analyze(req: AnalysisRequest, request: Request):
     if risk_emb_cache is None or profit_emb_cache is None or tech_emb_cache is None:
         precompute_anchors()
 
-    # -- Risk Metric Scoring --
+    # -- Compute raw scores and clamp to get final percentages --
+    # Risk
     risk_score = 0.5
-    risk_reasoning = "Оценка на основе общих параметров."
     if risk_text.strip() and risk_emb_cache is not None:
         risk_text_emb = get_embedding(risk_text[:2000]).reshape(1, -1)
         sim_risk = cosine_similarity(risk_text_emb, risk_emb_cache)[0][0]
-        
         risk_hits = sum(req.text.lower().count(w) for w in ["риск", "угроз", "проблем", "сбой", "ошибк", "уязвимост", "штраф", "санкци", "убыт", "утек"])
         risk_factor = min(0.5, (risk_hits / word_count) * 20)
         risk_score = 0.2 + (sim_risk * 0.4) + risk_factor
@@ -993,15 +995,17 @@ async def analyze(req: AnalysisRequest, request: Request):
         risk_sec_lower = risk_text.lower()
         if "не обнаруж" in risk_sec_lower or "отсутствуют" in risk_sec_lower or "нет рисков" in risk_sec_lower or len(risk_sec_lower.strip()) < 15:
             risk_score = 0.15
+            risk_pct = round(min(0.95, max(0.10, risk_score)) * 100, 2)
             risk_reasoning = "Критические технические и операционные риски не обнаружены."
         else:
-            risk_reasoning = f"Риски оценены на основе семантического анализа раздела угроз. Выявлено сходство с понятиями сбоев и уязвимостей ({round(sim_risk*100, 1)}%)."
+            risk_pct = round(min(0.95, max(0.10, risk_score)) * 100, 2)
+            risk_reasoning = f"Риски оценены на основе семантического анализа раздела угроз. Выявлено сходство с понятиями сбоев и уязвимостей ({risk_pct}%)."
     else:
+        risk_pct = round(min(0.95, max(0.10, risk_score)) * 100, 2)
         risk_reasoning = "Оценка риска выполнена по базовому контенту."
     
     # -- Profitability Metric Scoring --
     profit_score = 0.5
-    profit_reasoning = "Оценка на основе общих параметров."
     if profit_text.strip() and profit_emb_cache is not None:
         profit_text_emb = get_embedding(profit_text[:2000]).reshape(1, -1)
         sim_profit = cosine_similarity(profit_text_emb, profit_emb_cache)[0][0]
@@ -1013,16 +1017,17 @@ async def analyze(req: AnalysisRequest, request: Request):
         profit_sec_lower = profit_text.lower()
         if "не описан" in profit_sec_lower or "нет данных" in profit_sec_lower or len(profit_sec_lower.strip()) < 15:
             profit_score = 0.35
+            profit_pct = round(min(0.95, max(0.15, profit_score)) * 100, 2)
             profit_reasoning = "Экономический потенциал и финансовые показатели слабо отражены в документации."
         else:
-            profit_reasoning = f"Потенциал окупаемости оценен по финансовому разделу. Сходство с концептами коммерческой эффективности: {round(sim_profit*100, 1)}%."
+            profit_pct = round(min(0.95, max(0.15, profit_score)) * 100, 2)
+            profit_reasoning = f"Потенциал окупаемости оценен по финансовому разделу. Сходство с концептами коммерческой эффективности: {profit_pct}%."
     else:
+        profit_pct = round(min(0.95, max(0.15, profit_score)) * 100, 2)
         profit_reasoning = "Оценка доходности выполнена по базовому контенту."
 
     # -- Relevance Metric Scoring --
     relevance_score = 0.5
-    relevance_reasoning = "Оценка на основе общих параметров."
-    
     detected_techs = sorted(list(set(ent["text"] for ent in entities if ent["type"] == "Technology")))
     
     if arch_text.strip() and tech_emb_cache is not None:
@@ -1033,14 +1038,11 @@ async def analyze(req: AnalysisRequest, request: Request):
         found_terms = list(set([t for t in it_terms if t in req.text.lower()]))
         
         relevance_score = 0.3 + (sim_relevance * 0.3) + (len(found_terms) * 0.05) + (len(detected_techs) * 0.03)
-        relevance_reasoning = f"Соответствие требованиям оценено по архитектурному разделу. Степень зрелости стека и архитектурного описания: {round(sim_relevance*100, 1)}%."
+        relevance_pct = round(min(0.95, max(0.10, relevance_score)) * 100, 2)
+        relevance_reasoning = f"Соответствие требованиям оценено по архитектурному разделу. Степень зрелости стека и архитектурного описания: {relevance_pct}%."
     else:
+        relevance_pct = round(min(0.95, max(0.10, relevance_score)) * 100, 2)
         relevance_reasoning = "Оценка соответствия выполнена по базовому контенту."
-
-    # Clamp scores
-    risk_pct = round(min(0.95, max(0.10, risk_score)) * 100, 2)
-    profit_pct = round(min(0.95, max(0.15, profit_score)) * 100, 2)
-    relevance_pct = round(min(0.95, max(0.10, relevance_score)) * 100, 2)
 
     # Determine levels
     risk_level = "Высокий" if risk_pct > 70 else ("Низкий" if risk_pct < 40 else "Средний")
@@ -1087,10 +1089,6 @@ async def analyze(req: AnalysisRequest, request: Request):
     ]
 
     exec_summary = summary_text.strip()
-    if is_llama:
-        exec_summary = f"Анализ Llama 3 (Ollama): {exec_summary}"
-    else:
-        exec_summary = f"Анализ ruBERT + Heuristics: {exec_summary}"
 
     return AnalysisResult(
         meta_info=MetaInfo(budget=budget_val, timeline=timeline_val, domain=domain_val),

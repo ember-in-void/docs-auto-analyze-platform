@@ -17,6 +17,7 @@ export default function WorkspacePage() {
   const [error, setError] = useState('')
 
   // State for real NLP results
+  const [docTitle, setDocTitle] = useState('')
   const [documentText, setDocumentText] = useState('')
   const [entities, setEntities] = useState([])
   const [analysisResult, setAnalysisResult] = useState(null)
@@ -54,6 +55,7 @@ export default function WorkspacePage() {
           const latestDoc = docs[0]
           const latestPred = preds[0]
 
+          setDocTitle(latestDoc.title || '')
           setDocumentText(latestDoc.content || '')
           setAnalysisResult(latestPred)
 
@@ -71,6 +73,7 @@ export default function WorkspacePage() {
           setUploaded(true)
         } else {
           // Reset states if no document/prediction exists yet
+          setDocTitle('')
           setDocumentText('')
           setAnalysisResult(null)
           setEntities([])
@@ -108,6 +111,7 @@ export default function WorkspacePage() {
       })
       
       setDocumentText(docRes.content || '')
+      setDocTitle(docRes.title || file.name)
 
       // 2. Generate Prediction
       const predRes = await client.post(`/projects/${projectId}/predictions/generate`)
@@ -132,6 +136,14 @@ export default function WorkspacePage() {
     }
   }
 
+  const handleResetUpload = () => {
+    setUploaded(false)
+    setDocumentText('')
+    setAnalysisResult(null)
+    setEntities([])
+    setDocTitle('')
+  }
+
   return (
     <div className="min-h-screen pt-24 pb-16 px-6">
       <div className="max-w-5xl mx-auto">
@@ -152,10 +164,34 @@ export default function WorkspacePage() {
           </div>
         )}
 
-        {/* --- Upload Zone --- */}
+        {/* --- Upload Zone / Document Banner --- */}
         <div className="mb-12">
-          <FileUpload onUpload={handleUpload} />
-          {loading && <p className="text-center text-gray-400 mt-4 animate-pulse">Анализ документа нейросетью...</p>}
+          {!uploaded ? (
+            <>
+              <FileUpload onUpload={handleUpload} />
+              {loading && <p className="text-center text-gray-400 mt-4 animate-pulse">Анализ документа нейросетью...</p>}
+            </>
+          ) : (
+            <div className="bg-surface border border-white/5 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 animate-fade-in">
+              <div className="flex items-center gap-4 text-left">
+                <span className="text-3xl">📄</span>
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+                    Активный документ для анализа
+                  </h3>
+                  <p className="text-lg font-bold text-white mt-1">
+                    {docTitle || 'Документ без названия'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleResetUpload}
+                className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white font-semibold text-sm border border-white/10 hover:border-white/20 transition-all duration-300 flex items-center gap-2"
+              >
+                🔄 Загрузить другой файл
+              </button>
+            </div>
+          )}
         </div>
 
         {/* --- Results Panel (shown after upload) --- */}
