@@ -43,12 +43,11 @@ var relevanceKeywords = []string{
 // ==========================================
 
 type nlpAnalysisResult struct {
-	Profitability float64         `json:"profitability"`
-	Risk          float64         `json:"risk"`
-	Relevance     float64         `json:"relevance"`
-	Keywords      []string        `json:"keywords"`
-	Summary       string          `json:"summary"`
-	Entities      json.RawMessage `json:"entities"`
+	MetaInfo         domain.MetaInfo    `json:"meta_info"`
+	ExecutiveSummary string             `json:"executive_summary"`
+	TechStack        domain.TechStack   `json:"tech_stack"`
+	Metrics          domain.MetricsList `json:"metrics"`
+	Entities         json.RawMessage    `json:"entities"`
 }
 
 // ==========================================
@@ -101,15 +100,15 @@ func (s *predictionService) Generate(ctx context.Context, projectID string) (*do
 	}
 
 	pred := &domain.Prediction{
-		ProjectID:          projectID,
-		ProfitabilityScore: result.Profitability,
-		RiskScore:          result.Risk,
-		RelevanceScore:     result.Relevance,
-		Summary:            result.Summary,
-		Keywords:           result.Keywords,
-		Entities:           result.Entities,
-		ModelVersion:       "rubert-tiny2",
-		GeneratedAt:        time.Now(),
+		ProjectID:        projectID,
+		MetaInfo:         result.MetaInfo,
+		ExecutiveSummary: result.ExecutiveSummary,
+		TechStack:        result.TechStack,
+		Metrics:          result.Metrics,
+		Keywords:         result.TechStack.Detected,
+		Entities:         result.Entities,
+		ModelVersion:     "rubert-tiny2",
+		GeneratedAt:      time.Now(),
 	}
 
 	return s.repo.Create(ctx, pred)
@@ -121,7 +120,7 @@ func (s *predictionService) callNLP(ctx context.Context, text string) (*nlpAnaly
 
 	// Create a custom HTTP client with a timeout
 	client := &http.Client{
-		Timeout: 15 * time.Second,
+		Timeout: 60 * time.Second,
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.nlpURL+"/analyze", bytes.NewBuffer(payload))
@@ -162,11 +161,22 @@ func (s *predictionService) callNLP(ctx context.Context, text string) (*nlpAnaly
 func (s *predictionService) mockScore(docs []*domain.Document) nlpAnalysisResult {
 	if len(docs) == 0 {
 		return nlpAnalysisResult{
-			Profitability: 0.50,
-			Risk:          0.50,
-			Relevance:     0.50,
-			Keywords:      []string{},
-			Summary:       "Документация отсутствует. Анализ невозможен. Добавьте документы в проект для получения прогноза.",
+			MetaInfo: domain.MetaInfo{
+				Budget:   "Не указано",
+				Timeline: "Не указано",
+				Domain:   "Не указано",
+			},
+			ExecutiveSummary: "Документация отсутствует. Анализ невозможен. Добавьте документы в проект для получения прогноза.",
+			TechStack: domain.TechStack{
+				Detected: []string{},
+				Missing:  []string{"Redis", "Message Broker"},
+			},
+			Metrics: domain.MetricsList{
+				{Type: "risk", Label: "Уровень риска", Score: 50.0, Level: "Средний", Reasoning: "Документация отсутствует", Recommendations: []string{}},
+				{Type: "profitability", Label: "Потенциал окупаемости", Score: 50.0, Level: "Средний", Reasoning: "Документация отсутствует", Recommendations: []string{}},
+				{Type: "relevance", Label: "Соответствие требованиям", Score: 50.0, Level: "Средний", Reasoning: "Документация отсутствует", Recommendations: []string{}},
+			},
+			Entities: json.RawMessage("[]"),
 		}
 	}
 
@@ -186,26 +196,36 @@ func (s *predictionService) mockScore(docs []*domain.Document) nlpAnalysisResult
 	relHits := countHits(allText, relevanceKeywords)
 
 	// Normalize scores with baseline offset
-	profitability := clamp(0.35+float64(posHits)/wordCount*80, 0.10, 0.95)
-	risk := clamp(0.15+float64(riskHits)/wordCount*70, 0.10, 0.90)
-	relevance := clamp(0.40+float64(relHits)/wordCount*85, 0.10, 0.95)
+	profitability := clamp(0.35+float64(posHits)/wordCount*80, 0.10, 0.95) * 100
+	risk := clamp(0.15+float64(riskHits)/wordCount*70, 0.10, 0.90) * 100
+	relevance := clamp(0.40+float64(relHits)/wordCount*85, 0.10, 0.95) * 100
 
 	// Collect unique found keywords
 	found := collectFound(allText, append(append(profitabilityKeywords, riskKeywords...), relevanceKeywords...))
 
 	summary := fmt.Sprintf(
 		"Проанализировано %d документ(ов). Найдено %d релевантных терминов. "+
-			"Оценка рассчитана методом частотного анализа ключевых слов (mock-v1). "+
-			"В будущей версии этот модуль будет заменён на NLP-сервис на базе трансформерных моделей.",
+			"Оценка рассчитана методом частотного анализа ключевых слов (mock-v1).",
 		len(docs), len(found),
 	)
 
 	return nlpAnalysisResult{
-		Profitability: profitability,
-		Risk:          risk,
-		Relevance:     relevance,
-		Keywords:      found,
-		Summary:       summary,
+		MetaInfo: domain.MetaInfo{
+			Budget:   "Не указано",
+			Timeline: "Не указано",
+			Domain:   "Не указано",
+		},
+		ExecutiveSummary: summary,
+		TechStack: domain.TechStack{
+			Detected: found,
+			Missing:  []string{"Redis", "Message Broker"},
+		},
+		Metrics: domain.MetricsList{
+			{Type: "risk", Label: "Уровень риска", Score: risk, Level: "Средний", Reasoning: "Оценка риска на основе частотного анализа.", Recommendations: []string{}},
+			{Type: "profitability", Label: "Потенциал окупаемости", Score: profitability, Level: "Средний", Reasoning: "Оценка доходности на основе частотного анализа.", Recommendations: []string{}},
+			{Type: "relevance", Label: "Соответствие требованиям", Score: relevance, Level: "Средний", Reasoning: "Оценка соответствия на основе частотного анализа.", Recommendations: []string{}},
+		},
+		Entities: json.RawMessage("[]"),
 	}
 }
 

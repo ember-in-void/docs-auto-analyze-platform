@@ -40,7 +40,7 @@ func (h *ProjectHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByID godoc — GET /api/v1/projects/{id}
 func (h *ProjectHandler) GetByID(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "projectId")
 	user, _ := GetUserFromContext(r.Context())
 	project, err := h.svc.GetByID(r.Context(), id, user.ID)
 	if err != nil {
@@ -74,7 +74,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update godoc — PUT /api/v1/projects/{id}
 func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "projectId")
 
 	var req domain.UpdateProjectRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -98,7 +98,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete godoc — DELETE /api/v1/projects/{id}
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := chi.URLParam(r, "projectId")
 	user, _ := GetUserFromContext(r.Context())
 	if err := h.svc.Delete(r.Context(), id, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось удалить проект")

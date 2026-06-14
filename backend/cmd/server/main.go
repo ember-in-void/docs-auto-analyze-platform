@@ -75,9 +75,9 @@ func main() {
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%s", cfg.AppPort),
 		Handler:      r,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 120 * time.Second,
+		IdleTimeout:  120 * time.Second,
 	}
 
 	// ==========================================
