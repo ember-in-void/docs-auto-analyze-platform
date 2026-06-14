@@ -30,7 +30,7 @@ func NewProjectHandler(svc domain.ProjectService) *ProjectHandler {
 // GetAll godoc — GET /api/v1/projects
 func (h *ProjectHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	user, _ := GetUserFromContext(r.Context())
-	projects, err := h.svc.GetAll(user.ID)
+	projects, err := h.svc.GetAll(r.Context(), user.ID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить список проектов")
 		return
@@ -42,7 +42,7 @@ func (h *ProjectHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 func (h *ProjectHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	user, _ := GetUserFromContext(r.Context())
-	project, err := h.svc.GetByID(id, user.ID)
+	project, err := h.svc.GetByID(r.Context(), id, user.ID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Проект не найден")
 		return
@@ -58,8 +58,13 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := ValidateStruct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Ошибка валидации: "+err.Error())
+		return
+	}
+
 	user, _ := GetUserFromContext(r.Context())
-	project, err := h.svc.Create(user.ID, &req)
+	project, err := h.svc.Create(r.Context(), user.ID, &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -77,8 +82,13 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := ValidateStruct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Ошибка валидации: "+err.Error())
+		return
+	}
+
 	user, _ := GetUserFromContext(r.Context())
-	project, err := h.svc.Update(id, user.ID, &req)
+	project, err := h.svc.Update(r.Context(), id, user.ID, &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -90,7 +100,7 @@ func (h *ProjectHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *ProjectHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	user, _ := GetUserFromContext(r.Context())
-	if err := h.svc.Delete(id, user.ID); err != nil {
+	if err := h.svc.Delete(r.Context(), id, user.ID); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось удалить проект")
 		return
 	}

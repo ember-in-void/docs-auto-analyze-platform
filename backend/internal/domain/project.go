@@ -1,7 +1,10 @@
 // Package domain defines core entities and interfaces for the IT project platform.
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ==========================================
 // Constants
@@ -36,14 +39,14 @@ type Project struct {
 
 // CreateProjectRequest is the payload for creating a new project.
 type CreateProjectRequest struct {
-	Name        string `json:"name"`
+	Name        string `json:"name" validate:"required"`
 	Description string `json:"description"`
 	Status      string `json:"status"`
 }
 
 // UpdateProjectRequest is the payload for updating an existing project.
 type UpdateProjectRequest struct {
-	Name        string `json:"name"`
+	Name        string `json:"name" validate:"required"`
 	Description string `json:"description"`
 	Status      string `json:"status"`
 }
@@ -54,11 +57,11 @@ type UpdateProjectRequest struct {
 
 // ProjectRepository defines data access operations for projects.
 type ProjectRepository interface {
-	GetAll(ownerID string) ([]*Project, error)
-	GetByID(id string, ownerID string) (*Project, error)
-	Create(ownerID string, req *CreateProjectRequest) (*Project, error)
-	Update(id string, ownerID string, req *UpdateProjectRequest) (*Project, error)
-	Delete(id string, ownerID string) error
+	GetAll(ctx context.Context, ownerID string) ([]*Project, error)
+	GetByID(ctx context.Context, id string, ownerID string) (*Project, error)
+	Create(ctx context.Context, ownerID string, req *CreateProjectRequest) (*Project, error)
+	Update(ctx context.Context, id string, ownerID string, req *UpdateProjectRequest) (*Project, error)
+	Delete(ctx context.Context, id string, ownerID string) error
 }
 
 // ==========================================
@@ -67,9 +70,9 @@ type ProjectRepository interface {
 
 // ProjectService defines business logic operations for projects.
 type ProjectService interface {
-	GetAll(ownerID string) ([]*Project, error)
-	GetByID(id string, ownerID string) (*Project, error)
-	Create(ownerID string, req *CreateProjectRequest) (*Project, error)
-	Update(id string, ownerID string, req *UpdateProjectRequest) (*Project, error)
-	Delete(id string, ownerID string) error
+	GetAll(ctx context.Context, ownerID string) ([]*Project, error)
+	GetByID(ctx context.Context, id string, ownerID string) (*Project, error)
+	Create(ctx context.Context, ownerID string, req *CreateProjectRequest) (*Project, error)
+	Update(ctx context.Context, id string, ownerID string, req *UpdateProjectRequest) (*Project, error)
+	Delete(ctx context.Context, id string, ownerID string) error
 }

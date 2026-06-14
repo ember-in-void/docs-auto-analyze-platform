@@ -40,9 +40,11 @@ func NewAuthService(repo domain.UserRepository, jwtSecret string) domain.AuthSer
 
 func (s *authService) Register(ctx context.Context, req *domain.RegisterRequest) (*domain.AuthResponse, error) {
 	// 1. Check if user already exists
-	existing, _ := s.repo.GetByEmail(ctx, req.Email)
-	if existing != nil {
+	existing, err := s.repo.GetByEmail(ctx, req.Email)
+	if err == nil && existing != nil {
 		return nil, errors.New("пользователь с таким email уже существует")
+	} else if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		return nil, fmt.Errorf("authService.Register: check existing: %w", err)
 	}
 
 	// 2. Hash password
@@ -99,7 +101,7 @@ func (s *authService) Login(ctx context.Context, req *domain.LoginRequest) (*dom
 	}, nil
 }
 
-func (s *authService) ValidateToken(tokenString string) (*domain.User, error) {
+func (s *authService) ValidateToken(ctx context.Context, tokenString string) (*domain.User, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -113,7 +115,7 @@ func (s *authService) ValidateToken(tokenString string) (*domain.User, error) {
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		userID := claims["sub"].(string)
-		return s.repo.GetByID(context.Background(), userID)
+		return s.repo.GetByID(ctx, userID)
 	}
 
 	return nil, errors.New("invalid token claims")

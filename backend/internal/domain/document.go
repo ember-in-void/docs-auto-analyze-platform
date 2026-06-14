@@ -1,7 +1,10 @@
 // Package domain defines core entities and interfaces for the IT project platform.
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ==========================================
 // Constants
@@ -46,10 +49,10 @@ type CreateDocumentRequest struct {
 
 // DocumentRepository defines data access operations for documents.
 type DocumentRepository interface {
-	GetByProjectID(projectID string) ([]*Document, error)
-	GetByID(id string) (*Document, error)
-	Create(projectID string, req *CreateDocumentRequest) (*Document, error)
-	Delete(id string) error
+	GetByProjectID(ctx context.Context, projectID string) ([]*Document, error)
+	GetByID(ctx context.Context, id string) (*Document, error)
+	Create(ctx context.Context, projectID string, req *CreateDocumentRequest) (*Document, error)
+	Delete(ctx context.Context, id string) error
 }
 
 // ==========================================
@@ -58,8 +61,8 @@ type DocumentRepository interface {
 
 // DocumentService defines business logic operations for documents.
 type DocumentService interface {
-	GetByProjectID(projectID string) ([]*Document, error)
-	GetByID(id string) (*Document, error)
-	Create(projectID string, req *CreateDocumentRequest) (*Document, error)
-	Delete(id string) error
+	GetByProjectID(ctx context.Context, projectID string) ([]*Document, error)
+	GetByID(ctx context.Context, id string) (*Document, error)
+	Create(ctx context.Context, projectID string, req *CreateDocumentRequest) (*Document, error)
+	Delete(ctx context.Context, id string) error
 }

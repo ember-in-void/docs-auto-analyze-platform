@@ -3,8 +3,11 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+var ErrNotFound = errors.New("resource not found")
 
 // ==========================================
 // Constants
@@ -68,5 +71,5 @@ type UserRepository interface {
 type AuthService interface {
 	Register(ctx context.Context, req *RegisterRequest) (*AuthResponse, error)
 	Login(ctx context.Context, req *LoginRequest) (*AuthResponse, error)
-	ValidateToken(token string) (*User, error)
+	ValidateToken(ctx context.Context, token string) (*User, error)
 }

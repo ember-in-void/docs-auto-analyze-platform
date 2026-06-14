@@ -26,7 +26,7 @@ func NewProjectRepository(db *pgxpool.Pool) domain.ProjectRepository {
 // Read Operations
 // ==========================================
 
-func (r *projectRepository) GetAll(ownerID string) ([]*domain.Project, error) {
+func (r *projectRepository) GetAll(ctx context.Context, ownerID string) ([]*domain.Project, error) {
 	const q = `
 		SELECT p.id, p.owner_id, p.name, p.description, p.status, p.created_at, p.updated_at,
 		       COALESCE(pr.risk_score, 0) as risk_score, COALESCE(pr.profitability_score, 0) as profitability_score
@@ -41,7 +41,7 @@ func (r *projectRepository) GetAll(ownerID string) ([]*domain.Project, error) {
 		WHERE p.owner_id = $1
 		ORDER BY p.created_at DESC`
 
-	rows, err := r.db.Query(context.Background(), q, ownerID)
+	rows, err := r.db.Query(ctx, q, ownerID)
 	if err != nil {
 		return nil, fmt.Errorf("projectRepo.GetAll: query: %w", err)
 	}
@@ -58,7 +58,7 @@ func (r *projectRepository) GetAll(ownerID string) ([]*domain.Project, error) {
 	return projects, rows.Err()
 }
 
-func (r *projectRepository) GetByID(id string, ownerID string) (*domain.Project, error) {
+func (r *projectRepository) GetByID(ctx context.Context, id string, ownerID string) (*domain.Project, error) {
 	const q = `
 		SELECT p.id, p.owner_id, p.name, p.description, p.status, p.created_at, p.updated_at,
 		       COALESCE(pr.risk_score, 0) as risk_score, COALESCE(pr.profitability_score, 0) as profitability_score
@@ -73,7 +73,7 @@ func (r *projectRepository) GetByID(id string, ownerID string) (*domain.Project,
 		WHERE p.id = $1 AND p.owner_id = $2`
 
 	p := &domain.Project{}
-	err := r.db.QueryRow(context.Background(), q, id, ownerID).
+	err := r.db.QueryRow(ctx, q, id, ownerID).
 		Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt, &p.RiskScore, &p.ProfitabilityScore)
 	if err != nil {
 		return nil, fmt.Errorf("projectRepo.GetByID: %w", err)
@@ -85,7 +85,7 @@ func (r *projectRepository) GetByID(id string, ownerID string) (*domain.Project,
 // Write Operations
 // ==========================================
 
-func (r *projectRepository) Create(ownerID string, req *domain.CreateProjectRequest) (*domain.Project, error) {
+func (r *projectRepository) Create(ctx context.Context, ownerID string, req *domain.CreateProjectRequest) (*domain.Project, error) {
 	status := req.Status
 	if status == "" {
 		status = domain.ProjectStatusActive
@@ -97,7 +97,7 @@ func (r *projectRepository) Create(ownerID string, req *domain.CreateProjectRequ
 		RETURNING id, owner_id, name, description, status, created_at, updated_at`
 
 	p := &domain.Project{}
-	err := r.db.QueryRow(context.Background(), q, ownerID, req.Name, req.Description, status).
+	err := r.db.QueryRow(ctx, q, ownerID, req.Name, req.Description, status).
 		Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("projectRepo.Create: %w", err)
@@ -105,7 +105,7 @@ func (r *projectRepository) Create(ownerID string, req *domain.CreateProjectRequ
 	return p, nil
 }
 
-func (r *projectRepository) Update(id string, ownerID string, req *domain.UpdateProjectRequest) (*domain.Project, error) {
+func (r *projectRepository) Update(ctx context.Context, id string, ownerID string, req *domain.UpdateProjectRequest) (*domain.Project, error) {
 	const q = `
 		UPDATE projects
 		SET name = $3, description = $4, status = $5
@@ -113,7 +113,7 @@ func (r *projectRepository) Update(id string, ownerID string, req *domain.Update
 		RETURNING id, owner_id, name, description, status, created_at, updated_at`
 
 	p := &domain.Project{}
-	err := r.db.QueryRow(context.Background(), q, id, ownerID, req.Name, req.Description, req.Status).
+	err := r.db.QueryRow(ctx, q, id, ownerID, req.Name, req.Description, req.Status).
 		Scan(&p.ID, &p.OwnerID, &p.Name, &p.Description, &p.Status, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("projectRepo.Update: %w", err)
@@ -121,9 +121,9 @@ func (r *projectRepository) Update(id string, ownerID string, req *domain.Update
 	return p, nil
 }
 
-func (r *projectRepository) Delete(id string, ownerID string) error {
+func (r *projectRepository) Delete(ctx context.Context, id string, ownerID string) error {
 	const q = `DELETE FROM projects WHERE id = $1 AND owner_id = $2`
-	_, err := r.db.Exec(context.Background(), q, id, ownerID)
+	_, err := r.db.Exec(ctx, q, id, ownerID)
 	if err != nil {
 		return fmt.Errorf("projectRepo.Delete: %w", err)
 	}

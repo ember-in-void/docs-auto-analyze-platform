@@ -5,6 +5,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -69,13 +70,13 @@ func NewPredictionService(repo domain.PredictionRepository, docRepo domain.Docum
 // Business Logic
 // ==========================================
 
-func (s *predictionService) GetByProjectID(projectID string) ([]*domain.Prediction, error) {
-	return s.repo.GetByProjectID(projectID)
+func (s *predictionService) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Prediction, error) {
+	return s.repo.GetByProjectID(ctx, projectID)
 }
 
 // Generate produces a real NLP analysis for a project based on its documents.
-func (s *predictionService) Generate(projectID string) (*domain.Prediction, error) {
-	docs, err := s.docRepo.GetByProjectID(projectID)
+func (s *predictionService) Generate(ctx context.Context, projectID string) (*domain.Prediction, error) {
+	docs, err := s.docRepo.GetByProjectID(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("predictionService.Generate: fetch docs: %w", err)
 	}
@@ -86,12 +87,15 @@ func (s *predictionService) Generate(projectID string) (*domain.Prediction, erro
 
 	// 1. Combine text
 	var sb strings.Builder
-	for _, d := range docs {
-		sb.WriteString(d.Title + "\n" + d.Content + "\n\n")
+	for i, d := range docs {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(d.Content)
 	}
 
 	// 2. Call Python Service
-	result, err := s.callNLP(sb.String())
+	result, err := s.callNLP(ctx, sb.String())
 	if err != nil {
 		return nil, fmt.Errorf("predictionService.Generate: nlp call: %w", err)
 	}
@@ -108,11 +112,11 @@ func (s *predictionService) Generate(projectID string) (*domain.Prediction, erro
 		GeneratedAt:        time.Now(),
 	}
 
-	return s.repo.Create(pred)
+	return s.repo.Create(ctx, pred)
 }
 
 // callNLP makes an HTTP request to the Python service with a 15-second timeout.
-func (s *predictionService) callNLP(text string) (*nlpAnalysisResult, error) {
+func (s *predictionService) callNLP(ctx context.Context, text string) (*nlpAnalysisResult, error) {
 	payload, _ := json.Marshal(map[string]string{"text": text})
 
 	// Create a custom HTTP client with a timeout
@@ -120,7 +124,7 @@ func (s *predictionService) callNLP(text string) (*nlpAnalysisResult, error) {
 		Timeout: 15 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.nlpURL+"/analyze", bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.nlpURL+"/analyze", bytes.NewBuffer(payload))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

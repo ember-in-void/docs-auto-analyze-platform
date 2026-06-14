@@ -2,6 +2,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 
 	"nlp-platform/internal/domain"
@@ -24,21 +25,21 @@ func NewDocumentService(repo domain.DocumentRepository) domain.DocumentService {
 // Business Logic
 // ==========================================
 
-func (s *documentService) GetByProjectID(projectID string) ([]*domain.Document, error) {
+func (s *documentService) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Document, error) {
 	if projectID == "" {
 		return nil, fmt.Errorf("project id is required")
 	}
-	return s.repo.GetByProjectID(projectID)
+	return s.repo.GetByProjectID(ctx, projectID)
 }
 
-func (s *documentService) GetByID(id string) (*domain.Document, error) {
+func (s *documentService) GetByID(ctx context.Context, id string) (*domain.Document, error) {
 	if id == "" {
 		return nil, fmt.Errorf("document id is required")
 	}
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(ctx, id)
 }
 
-func (s *documentService) Create(projectID string, req *domain.CreateDocumentRequest) (*domain.Document, error) {
+func (s *documentService) Create(ctx context.Context, projectID string, req *domain.CreateDocumentRequest) (*domain.Document, error) {
 	if projectID == "" {
 		return nil, fmt.Errorf("project id is required")
 	}
@@ -51,12 +52,12 @@ func (s *documentService) Create(projectID string, req *domain.CreateDocumentReq
 	if req.DocType == "" {
 		req.DocType = domain.DocTypeOther
 	}
-	return s.repo.Create(projectID, req)
+	return s.repo.Create(ctx, projectID, req)
 }
 
-func (s *documentService) Delete(id string) error {
+func (s *documentService) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return fmt.Errorf("document id is required")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(ctx, id)
 }

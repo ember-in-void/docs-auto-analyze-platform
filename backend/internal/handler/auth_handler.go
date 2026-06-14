@@ -34,6 +34,11 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := ValidateStruct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Ошибка валидации: "+err.Error())
+		return
+	}
+
 	res, err := h.svc.Register(r.Context(), &req)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -48,6 +53,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req domain.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "Некорректное тело запроса")
+		return
+	}
+
+	if err := ValidateStruct(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Ошибка валидации: "+err.Error())
 		return
 	}
 

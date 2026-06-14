@@ -26,14 +26,14 @@ func NewDocumentRepository(db *pgxpool.Pool) domain.DocumentRepository {
 // Read Operations
 // ==========================================
 
-func (r *documentRepository) GetByProjectID(projectID string) ([]*domain.Document, error) {
+func (r *documentRepository) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Document, error) {
 	const q = `
 		SELECT id, project_id, title, content, doc_type, uploaded_at
 		FROM documents
 		WHERE project_id = $1
 		ORDER BY uploaded_at DESC`
 
-	rows, err := r.db.Query(context.Background(), q, projectID)
+	rows, err := r.db.Query(ctx, q, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("documentRepo.GetByProjectID: query: %w", err)
 	}
@@ -50,14 +50,14 @@ func (r *documentRepository) GetByProjectID(projectID string) ([]*domain.Documen
 	return docs, rows.Err()
 }
 
-func (r *documentRepository) GetByID(id string) (*domain.Document, error) {
+func (r *documentRepository) GetByID(ctx context.Context, id string) (*domain.Document, error) {
 	const q = `
 		SELECT id, project_id, title, content, doc_type, uploaded_at
 		FROM documents
 		WHERE id = $1`
 
 	d := &domain.Document{}
-	err := r.db.QueryRow(context.Background(), q, id).
+	err := r.db.QueryRow(ctx, q, id).
 		Scan(&d.ID, &d.ProjectID, &d.Title, &d.Content, &d.DocType, &d.UploadedAt)
 	if err != nil {
 		return nil, fmt.Errorf("documentRepo.GetByID: %w", err)
@@ -69,7 +69,7 @@ func (r *documentRepository) GetByID(id string) (*domain.Document, error) {
 // Write Operations
 // ==========================================
 
-func (r *documentRepository) Create(projectID string, req *domain.CreateDocumentRequest) (*domain.Document, error) {
+func (r *documentRepository) Create(ctx context.Context, projectID string, req *domain.CreateDocumentRequest) (*domain.Document, error) {
 	docType := req.DocType
 	if docType == "" {
 		docType = domain.DocTypeOther
@@ -81,7 +81,7 @@ func (r *documentRepository) Create(projectID string, req *domain.CreateDocument
 		RETURNING id, project_id, title, content, doc_type, uploaded_at`
 
 	d := &domain.Document{}
-	err := r.db.QueryRow(context.Background(), q, projectID, req.Title, req.Content, docType).
+	err := r.db.QueryRow(ctx, q, projectID, req.Title, req.Content, docType).
 		Scan(&d.ID, &d.ProjectID, &d.Title, &d.Content, &d.DocType, &d.UploadedAt)
 	if err != nil {
 		return nil, fmt.Errorf("documentRepo.Create: %w", err)
@@ -89,9 +89,9 @@ func (r *documentRepository) Create(projectID string, req *domain.CreateDocument
 	return d, nil
 }
 
-func (r *documentRepository) Delete(id string) error {
+func (r *documentRepository) Delete(ctx context.Context, id string) error {
 	const q = `DELETE FROM documents WHERE id = $1`
-	_, err := r.db.Exec(context.Background(), q, id)
+	_, err := r.db.Exec(ctx, q, id)
 	if err != nil {
 		return fmt.Errorf("documentRepo.Delete: %w", err)
 	}

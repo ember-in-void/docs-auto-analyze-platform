@@ -3,8 +3,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"nlp-platform/internal/domain"
 )
@@ -50,6 +52,9 @@ func (r *userRepository) GetByEmail(ctx context.Context, email string) (*domain.
 	err := r.db.QueryRow(ctx, q, email).
 		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.FullName, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, fmt.Errorf("userRepo.GetByEmail: %w", err)
 	}
 	return u, nil
@@ -65,6 +70,9 @@ func (r *userRepository) GetByID(ctx context.Context, id string) (*domain.User, 
 	err := r.db.QueryRow(ctx, q, id).
 		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.FullName, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
 		return nil, fmt.Errorf("userRepo.GetByID: %w", err)
 	}
 	return u, nil

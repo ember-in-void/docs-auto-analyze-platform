@@ -63,8 +63,8 @@ func main() {
 	// Dependency Injection (Handlers)
 	// ==========================================
 	projectH := handler.NewProjectHandler(projectSvc)
-	documentH := handler.NewDocumentHandler(documentSvc)
-	predictionH := handler.NewPredictionHandler(predictionSvc)
+	documentH := handler.NewDocumentHandler(documentSvc, projectSvc)
+	predictionH := handler.NewPredictionHandler(predictionSvc, projectSvc)
 	authH := handler.NewAuthHandler(authSvc)
 
 	// ==========================================

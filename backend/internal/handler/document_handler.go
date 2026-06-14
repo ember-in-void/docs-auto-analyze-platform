@@ -20,12 +20,13 @@ import (
 
 // DocumentHandler handles HTTP requests for document resources.
 type DocumentHandler struct {
-	svc domain.DocumentService
+	svc        domain.DocumentService
+	projectSvc domain.ProjectService
 }
 
 // NewDocumentHandler creates a new DocumentHandler.
-func NewDocumentHandler(svc domain.DocumentService) *DocumentHandler {
-	return &DocumentHandler{svc: svc}
+func NewDocumentHandler(svc domain.DocumentService, projectSvc domain.ProjectService) *DocumentHandler {
+	return &DocumentHandler{svc: svc, projectSvc: projectSvc}
 }
 
 // ==========================================
@@ -35,7 +36,15 @@ func NewDocumentHandler(svc domain.DocumentService) *DocumentHandler {
 // GetByProjectID godoc — GET /api/v1/projects/{projectId}/documents
 func (h *DocumentHandler) GetByProjectID(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectId")
-	docs, err := h.svc.GetByProjectID(projectID)
+	user, _ := GetUserFromContext(r.Context())
+
+	// IDOR check: verify project belongs to user
+	if _, err := h.projectSvc.GetByID(r.Context(), projectID, user.ID); err != nil {
+		writeError(w, http.StatusNotFound, "Проект не найден")
+		return
+	}
+
+	docs, err := h.svc.GetByProjectID(r.Context(), projectID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось получить документы")
 		return
@@ -46,11 +55,20 @@ func (h *DocumentHandler) GetByProjectID(w http.ResponseWriter, r *http.Request)
 // GetByID godoc — GET /api/v1/documents/{id}
 func (h *DocumentHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	doc, err := h.svc.GetByID(id)
+	user, _ := GetUserFromContext(r.Context())
+
+	doc, err := h.svc.GetByID(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "Документ не найден")
 		return
 	}
+
+	// IDOR check: verify project belongs to user
+	if _, err := h.projectSvc.GetByID(r.Context(), doc.ProjectID, user.ID); err != nil {
+		writeError(w, http.StatusForbidden, "Доступ запрещен")
+		return
+	}
+
 	writeData(w, http.StatusOK, doc)
 }
 
@@ -121,7 +139,14 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	doc, err := h.svc.Create(projectID, &docReq)
+	user, _ := GetUserFromContext(r.Context())
+	// IDOR check: verify project belongs to user
+	if _, err := h.projectSvc.GetByID(r.Context(), projectID, user.ID); err != nil {
+		writeError(w, http.StatusNotFound, "Проект не найден")
+		return
+	}
+
+	doc, err := h.svc.Create(r.Context(), projectID, &docReq)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -132,7 +157,21 @@ func (h *DocumentHandler) Create(w http.ResponseWriter, r *http.Request) {
 // Delete godoc — DELETE /api/v1/documents/{id}
 func (h *DocumentHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := h.svc.Delete(id); err != nil {
+	user, _ := GetUserFromContext(r.Context())
+
+	doc, err := h.svc.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "Документ не найден")
+		return
+	}
+
+	// IDOR check: verify project belongs to user
+	if _, err := h.projectSvc.GetByID(r.Context(), doc.ProjectID, user.ID); err != nil {
+		writeError(w, http.StatusForbidden, "Доступ запрещен")
+		return
+	}
+
+	if err := h.svc.Delete(r.Context(), id); err != nil {
 		writeError(w, http.StatusInternalServerError, "Не удалось удалить документ")
 		return
 	}

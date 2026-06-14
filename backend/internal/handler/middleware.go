@@ -39,7 +39,7 @@ func AuthMiddleware(svc domain.AuthService) func(http.Handler) http.Handler {
 				return
 			}
 
-			user, err := svc.ValidateToken(parts[1])
+			user, err := svc.ValidateToken(r.Context(), parts[1])
 			if err != nil {
 				writeError(w, http.StatusUnauthorized, "Недействительный токен")
 				return

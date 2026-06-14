@@ -26,7 +26,7 @@ func NewPredictionRepository(db *pgxpool.Pool) domain.PredictionRepository {
 // Read Operations
 // ==========================================
 
-func (r *predictionRepository) GetByProjectID(projectID string) ([]*domain.Prediction, error) {
+func (r *predictionRepository) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Prediction, error) {
 	const q = `
 		SELECT id, project_id, profitability_score, risk_score, relevance_score,
 		       summary, keywords, entities, model_version, generated_at
@@ -34,7 +34,7 @@ func (r *predictionRepository) GetByProjectID(projectID string) ([]*domain.Predi
 		WHERE project_id = $1
 		ORDER BY generated_at DESC`
 
-	rows, err := r.db.Query(context.Background(), q, projectID)
+	rows, err := r.db.Query(ctx, q, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("predictionRepo.GetByProjectID: query: %w", err)
 	}
@@ -60,7 +60,7 @@ func (r *predictionRepository) GetByProjectID(projectID string) ([]*domain.Predi
 // Write Operations
 // ==========================================
 
-func (r *predictionRepository) Create(p *domain.Prediction) (*domain.Prediction, error) {
+func (r *predictionRepository) Create(ctx context.Context, p *domain.Prediction) (*domain.Prediction, error) {
 	const q = `
 		INSERT INTO predictions
 			(project_id, profitability_score, risk_score, relevance_score, summary, keywords, entities, model_version)
@@ -69,7 +69,7 @@ func (r *predictionRepository) Create(p *domain.Prediction) (*domain.Prediction,
 		          summary, keywords, entities, model_version, generated_at`
 
 	result := &domain.Prediction{}
-	err := r.db.QueryRow(context.Background(), q,
+	err := r.db.QueryRow(ctx, q,
 		p.ProjectID,
 		p.ProfitabilityScore,
 		p.RiskScore,

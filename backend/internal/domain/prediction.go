@@ -2,6 +2,7 @@
 package domain
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 )
@@ -16,9 +17,9 @@ import (
 type Prediction struct {
 	ID                 string          `json:"id"`
 	ProjectID          string          `json:"project_id"`
-	ProfitabilityScore float64         `json:"profitability_score"` // 0.0 – 1.0
-	RiskScore          float64         `json:"risk_score"`          // 0.0 – 1.0
-	RelevanceScore     float64         `json:"relevance_score"`     // 0.0 – 1.0
+	ProfitabilityScore float64         `json:"profitability_score"` // 0.0 – 100.0
+	RiskScore          float64         `json:"risk_score"`          // 0.0 – 100.0
+	RelevanceScore     float64         `json:"relevance_score"`     // 0.0 – 100.0
 	Summary            string          `json:"summary"`
 	Keywords           []string        `json:"keywords"`
 	Entities           json.RawMessage `json:"entities"`
@@ -32,8 +33,8 @@ type Prediction struct {
 
 // PredictionRepository defines data access operations for predictions.
 type PredictionRepository interface {
-	GetByProjectID(projectID string) ([]*Prediction, error)
-	Create(p *Prediction) (*Prediction, error)
+	GetByProjectID(ctx context.Context, projectID string) ([]*Prediction, error)
+	Create(ctx context.Context, p *Prediction) (*Prediction, error)
 }
 
 // ==========================================
@@ -42,6 +43,6 @@ type PredictionRepository interface {
 
 // PredictionService defines business logic for analysis generation.
 type PredictionService interface {
-	GetByProjectID(projectID string) ([]*Prediction, error)
-	Generate(projectID string) (*Prediction, error)
+	GetByProjectID(ctx context.Context, projectID string) ([]*Prediction, error)
+	Generate(ctx context.Context, projectID string) (*Prediction, error)
 }
