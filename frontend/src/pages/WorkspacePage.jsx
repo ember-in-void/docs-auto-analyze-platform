@@ -1,8 +1,8 @@
 // ==========================================
 // WorkspacePage — Document upload & NER analysis
 // ==========================================
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import FileUpload from '../components/ui/FileUpload'
 import NerHighlighter from '../components/ui/NerHighlighter'
 import client from '../api/client'
@@ -10,6 +10,8 @@ import client from '../api/client'
 
 export default function WorkspacePage() {
   const { projectId } = useParams()
+  const navigate = useNavigate()
+  const [project, setProject] = useState(null)
   const [uploaded, setUploaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -18,6 +20,71 @@ export default function WorkspacePage() {
   const [documentText, setDocumentText] = useState('')
   const [entities, setEntities] = useState([])
   const [analysisResult, setAnalysisResult] = useState(null)
+
+  useEffect(() => {
+    if (!projectId) return
+
+    // Store the last visited project ID in localStorage
+    localStorage.setItem('lastProjectId', projectId)
+
+    async function loadData() {
+      setLoading(true)
+      setError('')
+      try {
+        // 1. Fetch project details
+        let projData
+        try {
+          projData = await client.get(`/projects/${projectId}`)
+          setProject(projData)
+        } catch (err) {
+          console.error('Project not found or access denied:', err)
+          localStorage.removeItem('lastProjectId')
+          navigate('/dashboard', { replace: true })
+          return
+        }
+
+        // 2. Fetch documents and predictions
+        const [docs, preds] = await Promise.all([
+          client.get(`/projects/${projectId}/documents`),
+          client.get(`/projects/${projectId}/predictions`)
+        ])
+
+        if (docs && docs.length > 0 && preds && preds.length > 0) {
+          const latestDoc = docs[0]
+          const latestPred = preds[0]
+
+          setDocumentText(latestDoc.content || '')
+          setAnalysisResult(latestPred)
+
+          let parsedEntities = []
+          if (typeof latestPred.entities === 'string') {
+            try {
+              parsedEntities = JSON.parse(latestPred.entities)
+            } catch (e) {
+              console.error('Failed to parse entities JSON string:', e)
+            }
+          } else if (Array.isArray(latestPred.entities)) {
+            parsedEntities = latestPred.entities
+          }
+          setEntities(parsedEntities)
+          setUploaded(true)
+        } else {
+          // Reset states if no document/prediction exists yet
+          setDocumentText('')
+          setAnalysisResult(null)
+          setEntities([])
+          setUploaded(false)
+        }
+      } catch (err) {
+        console.error('Error loading workspace data:', err)
+        setError(err.message || 'Ошибка загрузки данных проекта.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [projectId, navigate])
 
   async function handleUpload(file) {
     if (!projectId) {
@@ -69,8 +136,12 @@ export default function WorkspacePage() {
       <div className="max-w-5xl mx-auto">
         {/* --- Header --- */}
         <div className="mb-10">
-          <h1 className="text-3xl font-bold tracking-tight">Document Analysis Workspace</h1>
-          <p className="text-gray-400 mt-2">Upload IT documentation for automated NLP analysis and risk assessment.</p>
+          <h1 className="text-3xl font-bold tracking-tight">
+            Workspace: {project ? project.name : 'Document Analysis'}
+          </h1>
+          <p className="text-gray-400 mt-2">
+            {project?.description || 'Upload IT documentation for automated NLP analysis and risk assessment.'}
+          </p>
         </div>
 
         {/* --- Error message --- */}
