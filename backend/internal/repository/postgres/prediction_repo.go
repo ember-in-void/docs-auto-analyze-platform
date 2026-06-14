@@ -29,7 +29,7 @@ func NewPredictionRepository(db *pgxpool.Pool) domain.PredictionRepository {
 func (r *predictionRepository) GetByProjectID(ctx context.Context, projectID string) ([]*domain.Prediction, error) {
 	const q = `
 		SELECT id, project_id, keywords, entities, model_version, generated_at,
-		       meta_info, executive_summary, tech_stack, metrics
+		       meta_info, executive_summary, tech_stack, metrics, gap_analysis
 		FROM predictions
 		WHERE project_id = $1
 		ORDER BY generated_at DESC`
@@ -47,7 +47,7 @@ func (r *predictionRepository) GetByProjectID(ctx context.Context, projectID str
 			&p.ID, &p.ProjectID,
 			&p.Keywords, &p.Entities,
 			&p.ModelVersion, &p.GeneratedAt,
-			&p.MetaInfo, &p.ExecutiveSummary, &p.TechStack, &p.Metrics,
+			&p.MetaInfo, &p.ExecutiveSummary, &p.TechStack, &p.Metrics, &p.GapAnalysis,
 		); err != nil {
 			return nil, fmt.Errorf("predictionRepo.GetByProjectID: scan: %w", err)
 		}
@@ -77,10 +77,10 @@ func (r *predictionRepository) Create(ctx context.Context, p *domain.Prediction)
 	const q = `
 		INSERT INTO predictions
 			(project_id, profitability_score, risk_score, relevance_score, summary, keywords, entities, model_version,
-			 meta_info, executive_summary, tech_stack, metrics)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+			 meta_info, executive_summary, tech_stack, metrics, gap_analysis)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		RETURNING id, project_id, keywords, entities, model_version, generated_at,
-		          meta_info, executive_summary, tech_stack, metrics`
+		          meta_info, executive_summary, tech_stack, metrics, gap_analysis`
 
 	result := &domain.Prediction{}
 	err := r.db.QueryRow(ctx, q,
@@ -96,11 +96,12 @@ func (r *predictionRepository) Create(ctx context.Context, p *domain.Prediction)
 		p.ExecutiveSummary,
 		p.TechStack,
 		p.Metrics,
+		p.GapAnalysis,
 	).Scan(
 		&result.ID, &result.ProjectID,
 		&result.Keywords, &result.Entities,
 		&result.ModelVersion, &result.GeneratedAt,
-		&result.MetaInfo, &result.ExecutiveSummary, &result.TechStack, &result.Metrics,
+		&result.MetaInfo, &result.ExecutiveSummary, &result.TechStack, &result.Metrics, &result.GapAnalysis,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("predictionRepo.Create: %w", err)

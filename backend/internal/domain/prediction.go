@@ -91,21 +91,124 @@ func (m *MetricsList) Scan(src interface{}) error {
 }
 
 // ==========================================
+// Gap Analysis Structures
+// ==========================================
+
+// GapSectionStatus defines validation status of sections.
+type GapSectionStatus string
+
+const (
+	GapStatusPresent GapSectionStatus = "present"
+	GapStatusPartial GapSectionStatus = "partial"
+	GapStatusMissing GapSectionStatus = "missing"
+)
+
+// GapMetadata holds project metadata identified in document.
+type GapMetadata struct {
+	ProjectName  *string `json:"project_name"`
+	DocumentDate *string `json:"document_date"`
+	Deadline     *string `json:"deadline"`
+	Budget       *string `json:"budget"`
+}
+
+// GapPurposeSection holds results for project essence.
+type GapPurposeSection struct {
+	Status        GapSectionStatus `json:"status"`
+	ExtractedText *string          `json:"extracted_text"`
+	Gaps          []string         `json:"gaps"`
+}
+
+// GapTechStackSection holds results for stack analysis.
+type GapTechStackSection struct {
+	Status                  GapSectionStatus `json:"status"`
+	ExtractedTechnologies   []string         `json:"extracted_technologies"`
+	ArchitectureDescription *string          `json:"architecture_description"`
+	Gaps                    []string         `json:"gaps"`
+}
+
+// GapRiskItem holds a risk entity and category.
+type GapRiskItem struct {
+	Text     string  `json:"text"`
+	Category *string `json:"category"`
+}
+
+// GapRisksSection holds results for project risks.
+type GapRisksSection struct {
+	Status         GapSectionStatus `json:"status"`
+	ExtractedRisks []GapRiskItem    `json:"extracted_risks"`
+	Gaps           []string         `json:"gaps"`
+}
+
+// GapMetricItem represents a financial metric.
+type GapMetricItem struct {
+	Metric string `json:"metric"`
+	Value  string `json:"value"`
+}
+
+// GapEconomicsSection holds results for economic metrics.
+type GapEconomicsSection struct {
+	Status           GapSectionStatus `json:"status"`
+	ExtractedMetrics []GapMetricItem  `json:"extracted_metrics"`
+	Gaps             []string         `json:"gaps"`
+}
+
+// GapSections groups the 4 template sections.
+type GapSections struct {
+	Purpose   GapPurposeSection   `json:"purpose"`
+	TechStack GapTechStackSection `json:"tech_stack"`
+	Risks     GapRisksSection     `json:"risks"`
+	Economics GapEconomicsSection `json:"economics"`
+}
+
+// GapAnalysisResult holds the complete result of project documentation gap analysis.
+type GapAnalysisResult struct {
+	Metadata            GapMetadata `json:"metadata"`
+	Sections            GapSections `json:"sections"`
+	CompletenessScore   float64     `json:"completeness_score"`
+	ClarifyingQuestions []string    `json:"clarifying_questions"`
+}
+
+// Value implements driver.Valuer for database writes.
+func (g GapAnalysisResult) Value() (driver.Value, error) {
+	bytes, err := json.Marshal(g)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal GapAnalysisResult: %w", err)
+	}
+	return bytes, nil
+}
+
+// Scan implements sql.Scanner for database reads.
+func (g *GapAnalysisResult) Scan(src interface{}) error {
+	if src == nil {
+		return nil
+	}
+	bytes, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("failed to scan GapAnalysisResult: type assertion to []byte failed")
+	}
+	if err := json.Unmarshal(bytes, g); err != nil {
+		return fmt.Errorf("failed to unmarshal GapAnalysisResult: %w", err)
+	}
+	return nil
+}
+
+// ==========================================
 // Entity
 // ==========================================
 
 // Prediction holds the NLP analysis results for a project.
 type Prediction struct {
-	ID               string          `json:"id"`
-	ProjectID        string          `json:"project_id"`
-	MetaInfo         MetaInfo        `json:"meta_info"`
-	ExecutiveSummary string          `json:"executive_summary"`
-	TechStack        TechStack       `json:"tech_stack"`
-	Metrics          MetricsList     `json:"metrics"`
-	Keywords         []string        `json:"keywords"`
-	Entities         json.RawMessage `json:"entities"`
-	ModelVersion     string          `json:"model_version"`
-	GeneratedAt      time.Time       `json:"generated_at"`
+	ID               string             `json:"id"`
+	ProjectID        string             `json:"project_id"`
+	MetaInfo         MetaInfo           `json:"meta_info"`
+	ExecutiveSummary string             `json:"executive_summary"`
+	TechStack        TechStack          `json:"tech_stack"`
+	Metrics          MetricsList        `json:"metrics"`
+	Keywords         []string           `json:"keywords"`
+	Entities         json.RawMessage    `json:"entities"`
+	ModelVersion     string             `json:"model_version"`
+	GeneratedAt      time.Time          `json:"generated_at"`
+	GapAnalysis      *GapAnalysisResult `json:"gap_analysis,omitempty"`
 }
 
 // ==========================================

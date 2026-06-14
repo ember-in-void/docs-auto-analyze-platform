@@ -43,11 +43,12 @@ var relevanceKeywords = []string{
 // ==========================================
 
 type nlpAnalysisResult struct {
-	MetaInfo         domain.MetaInfo    `json:"meta_info"`
-	ExecutiveSummary string             `json:"executive_summary"`
-	TechStack        domain.TechStack   `json:"tech_stack"`
-	Metrics          domain.MetricsList `json:"metrics"`
-	Entities         json.RawMessage    `json:"entities"`
+	MetaInfo         domain.MetaInfo           `json:"meta_info"`
+	ExecutiveSummary string                    `json:"executive_summary"`
+	TechStack        domain.TechStack          `json:"tech_stack"`
+	Metrics          domain.MetricsList        `json:"metrics"`
+	Entities         json.RawMessage           `json:"entities"`
+	GapAnalysis      *domain.GapAnalysisResult `json:"gap_analysis"`
 }
 
 // ==========================================
@@ -109,6 +110,7 @@ func (s *predictionService) Generate(ctx context.Context, projectID string) (*do
 		Entities:         result.Entities,
 		ModelVersion:     "rubert-tiny2",
 		GeneratedAt:      time.Now(),
+		GapAnalysis:      result.GapAnalysis,
 	}
 
 	return s.repo.Create(ctx, pred)
@@ -120,7 +122,7 @@ func (s *predictionService) callNLP(ctx context.Context, text string) (*nlpAnaly
 
 	// Create a custom HTTP client with a timeout
 	client := &http.Client{
-		Timeout: 60 * time.Second,
+		Timeout: 90 * time.Second,
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.nlpURL+"/analyze", bytes.NewBuffer(payload))

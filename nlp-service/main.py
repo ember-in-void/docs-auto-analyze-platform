@@ -7,7 +7,7 @@ import logging
 import json
 import urllib.request
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from transformers import AutoTokenizer, AutoModel
@@ -75,12 +75,61 @@ class Metric(BaseModel):
     reasoning: str
     recommendations: List[str]
 
+# --- Gap Analysis Schemas ---
+class GapMetadata(BaseModel):
+    project_name: Optional[str] = None
+    document_date: Optional[str] = None
+    deadline: Optional[str] = None
+    budget: Optional[str] = None
+
+class GapPurposeSection(BaseModel):
+    status: str
+    extracted_text: Optional[str] = None
+    gaps: List[str] = []
+
+class GapTechStackSection(BaseModel):
+    status: str
+    extracted_technologies: List[str] = []
+    architecture_description: Optional[str] = None
+    gaps: List[str] = []
+
+class GapRiskItem(BaseModel):
+    text: Optional[str] = None
+    category: Optional[str] = None
+
+class GapRisksSection(BaseModel):
+    status: str
+    extracted_risks: List[GapRiskItem] = []
+    gaps: List[str] = []
+
+class GapMetricItem(BaseModel):
+    metric: Optional[str] = None
+    value: Optional[str] = None
+
+class GapEconomicsSection(BaseModel):
+    status: str
+    extracted_metrics: List[GapMetricItem] = []
+    gaps: List[str] = []
+
+class GapSections(BaseModel):
+    purpose: GapPurposeSection
+    tech_stack: GapTechStackSection
+    risks: GapRisksSection
+    economics: GapEconomicsSection
+
+class GapAnalysisResult(BaseModel):
+    metadata: GapMetadata
+    sections: GapSections
+    completeness_score: float
+    clarifying_questions: List[str] = []
+
 class AnalysisResult(BaseModel):
     meta_info: MetaInfo
     executive_summary: str
     tech_stack: TechStack
     metrics: List[Metric]
     entities: List[Entity]
+    gap_analysis: Optional[GapAnalysisResult] = None
 
 # ==========================================
 # Helper Functions
@@ -480,45 +529,355 @@ def perform_gap_analysis(domain: str, detected_tech: List[str]) -> Dict[str, Any
 def health():
     return {"status": "ok", "model_loaded": model is not None}
 
+def generate_fallback_gap_analysis(text: str, detected_techs: List[str], entities: List[Dict[str, Any]]) -> Dict[str, Any]:
+    text_lower = text.lower()
+    
+    # 1. Metadata extraction
+    project_name = None
+    document_date = None
+    deadline = None
+    budget = None
+    
+    # Look for Project Name
+    proj_patterns = [
+        r"(?:название проекта|проект|система|платформа)\s*:\s*\"?([^\n\"]+)\"?",
+        r"(?:разработка|создание)\s+(?:платформы|системы|сервиса)\s+([^\n.]+)"
+    ]
+    for p in proj_patterns:
+        match = re.search(p, text, re.IGNORECASE)
+        if match:
+            project_name = match.group(1).strip()
+            break
+    if not project_name:
+        lines = [l.strip() for l in text.split('\n') if l.strip()]
+        if lines and len(lines[0]) < 60 and not any(w in lines[0].lower() for w in ["тз", "техническое задание", "документ"]):
+            project_name = lines[0]
+            
+    # Extract deadline and budget from entities
+    for ent in entities:
+        if ent["type"] == "Budget":
+            budget = ent["text"]
+        elif ent["type"] == "Deadline":
+            deadline = ent["text"]
+            
+    # Look for dates
+    date_pattern = re.compile(r'\b(\d{1,2}[\s.-]+(?:января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря|\d{2})[\s.-]+\d{4})\b', re.IGNORECASE)
+    date_matches = date_pattern.findall(text)
+    if date_matches:
+        document_date = date_matches[0]
+        
+    # Budget normalization (e.g. "10 млн рублей" -> "10000000 руб")
+    if budget:
+        budget_clean = budget.strip()
+        num_match = re.search(r'(\d+(?:\.\d+)?)', budget_clean)
+        if num_match:
+            num = float(num_match.group(1))
+            val = ""
+            if "млн" in budget_clean or "миллион" in budget_clean:
+                num = int(num * 1000000)
+            elif "тыс" in budget_clean or "тысяч" in budget_clean:
+                num = int(num * 1000)
+            else:
+                num = int(num)
+            
+            if any(w in budget_clean.lower() for w in ["руб", "₽"]):
+                val = "руб"
+            elif any(w in budget_clean.lower() for w in ["usd", "$", "доллар"]):
+                val = "USD"
+            else:
+                val = "руб"
+            budget = f"{num} {val}"
+            
+    # 2. Sections Classification & Statuses
+    sentences = extract_sentences(text)
+    
+    purpose_text_sents = []
+    architecture_text_sents = []
+    risks_text_sents = []
+    economics_text_sents = []
+    
+    for sent in sentences:
+        s_lower = sent.lower()
+        if any(w in s_lower for w in ["цель проекта", "создание платформы", "разработка системы", "назначение системы", "цели проекта", "разрабатываемая система"]):
+            purpose_text_sents.append(sent)
+        if any(w in s_lower for w in ["архитектура", "стек", "база данных", "бд", "интеграция", "микросервис", "разработк"]):
+            architecture_text_sents.append(sent)
+        if any(w in s_lower for w in ["риск", "угроз", "проблем", "сбой", "задержка", "уязвимост", "ошибк", "убыт"]):
+            risks_text_sents.append(sent)
+        if any(w in s_lower for w in ["окупаемость", "выгода", "эффективность", "прибыль", "доход", "бюджет", "затраты", "%", "стоимость"]):
+            economics_text_sents.append(sent)
+            
+    # --- Purpose Section ---
+    purpose_status = "missing"
+    purpose_extracted = None
+    purpose_gaps = []
+    if purpose_text_sents:
+        purpose_extracted = " ".join(purpose_text_sents[:3])
+        if len(purpose_extracted) > 100:
+            purpose_status = "present"
+        else:
+            purpose_status = "partial"
+            purpose_gaps.append("Суть проекта описана слишком кратко, требуется детализация основных бизнес-целей.")
+    else:
+        purpose_gaps.append("Отсутствует явное описание целей и назначения разрабатываемой системы.")
+        
+    # --- Tech Stack Section ---
+    tech_status = "missing"
+    tech_gaps = []
+    arch_desc = None
+    if architecture_text_sents:
+        arch_desc = " ".join(architecture_text_sents[:3])
+        
+    if detected_techs and arch_desc:
+        tech_status = "present"
+    elif detected_techs or arch_desc:
+        tech_status = "partial"
+        if not detected_techs:
+            tech_gaps.append("Не указаны конкретные используемые технологии (языки, СУБД, фреймворки).")
+        if not arch_desc:
+            tech_gaps.append("Отсутствует описание архитектуры взаимодействия компонентов системы.")
+    else:
+        tech_gaps.append("Не описан стек технологий и архитектура взаимодействия компонентов.")
+        
+    # --- Risks Section ---
+    risk_status = "missing"
+    extracted_risks = []
+    risk_gaps = []
+    if risks_text_sents:
+        risk_status = "partial"
+        for r_sent in risks_text_sents[:4]:
+            category = "Технический"
+            r_lower = r_sent.lower()
+            if any(w in r_lower for w in ["безопасн", "уязвим", "утек", "взлом"]):
+                category = "Информационная безопасность"
+            elif any(w in r_lower for w in ["интеграц", "внешн", "api", "api gateway"]):
+                category = "Интеграционный"
+            elif any(w in r_lower for w in ["окупаем", "бюджет", "убыт", "финанс"]):
+                category = "Финансовый"
+            extracted_risks.append({"text": r_sent, "category": category})
+            
+        if len(extracted_risks) >= 3:
+            risk_status = "present"
+        else:
+            risk_gaps.append("Указаны отдельные риски, но отсутствует системная оценка вероятности и последствий сбоев.")
+    else:
+        risk_gaps.append("Критический пробел: в документе полностью отсутствуют риски, угрозы ИБ или возможные сбои.")
+        
+    # --- Economics Section ---
+    econ_status = "missing"
+    extracted_metrics = []
+    econ_gaps = []
+    if economics_text_sents:
+        econ_status = "partial"
+        for e_sent in economics_text_sents[:4]:
+            pct_match = re.search(r'(\b\d+(?:\.\d+)?\s*%)', e_sent)
+            val_match = re.search(r'(\b\d+(?:\.\d+)?\s*(?:млн|тыс\.)?\s*(?:руб|usd|\$))', e_sent, re.IGNORECASE)
+            
+            metric_name = "Показатель эффективности"
+            metric_val = "Не определено"
+            
+            if "окупаем" in e_sent.lower():
+                metric_name = "Срок окупаемости"
+            elif "прибыль" in e_sent.lower() or "доход" in e_sent.lower():
+                metric_name = "Ожидаемый доход/прибыль"
+            elif "бюджет" in e_sent.lower():
+                metric_name = "Бюджет проекта"
+                
+            if pct_match:
+                metric_val = pct_match.group(1)
+            elif val_match:
+                metric_val = val_match.group(1)
+            else:
+                metric_val = e_sent[:40] + "..."
+                
+            extracted_metrics.append({"metric": metric_name, "value": metric_val})
+            
+        if len(extracted_metrics) >= 2 and budget:
+            econ_status = "present"
+        else:
+            econ_gaps.append("Указаны финансовые маркеры, но отсутствует детальный расчет окупаемости и бизнес-выгод.")
+    else:
+        econ_gaps.append("Критический пробел: в документе не описана экономическая целесообразность, окупаемость или коммерческий потенциал.")
+        
+    # 3. Completeness score
+    status_scores = {"present": 1.0, "partial": 0.5, "missing": 0.0}
+    comp_score = (
+        status_scores[purpose_status] * 0.2 +
+        status_scores[tech_status] * 0.2 +
+        status_scores[risk_status] * 0.3 +
+        status_scores[econ_status] * 0.3
+    ) * 100
+    comp_score = round(comp_score, 1)
+    
+    # 4. Clarifying questions
+    clarifying_questions = []
+    if risk_status == "missing":
+        clarifying_questions.append("Какие ключевые технические, интеграционные и операционные риски вы видите на проекте?")
+    elif risk_status == "partial":
+        clarifying_questions.append("Опишите меры по снижению рисков и планы восстановления системы после возможных сбоев.")
+        
+    if econ_status == "missing":
+        clarifying_questions.append("Каков планируемый коммерческий эффект, срок окупаемости и ROI от внедрения системы?")
+    elif econ_status == "partial":
+        clarifying_questions.append("Уточните целевые экономические показатели (окупаемость, прибыльность) и структуру бюджета проекта.")
+        
+    if tech_status == "missing" or tech_status == "partial":
+        if len(clarifying_questions) < 3:
+            clarifying_questions.append("Опишите планируемую архитектуру взаимодействия микросервисов и требования к стеку технологий.")
+            
+    if purpose_status == "missing" or purpose_status == "partial":
+        if len(clarifying_questions) < 3:
+            clarifying_questions.append("Можете ли вы подробнее описать основную цель проекта и потребности его целевой аудитории?")
+            
+    clarifying_questions = clarifying_questions[:3]
+    
+    return {
+        "metadata": {
+            "project_name": project_name,
+            "document_date": document_date,
+            "deadline": deadline,
+            "budget": budget
+        },
+        "sections": {
+            "purpose": {
+                "status": purpose_status,
+                "extracted_text": purpose_extracted,
+                "gaps": purpose_gaps
+            },
+            "tech_stack": {
+                "status": tech_status,
+                "extracted_technologies": detected_techs,
+                "architecture_description": arch_desc,
+                "gaps": tech_gaps
+            },
+            "risks": {
+                "status": risk_status,
+                "extracted_risks": extracted_risks,
+                "gaps": risk_gaps
+            },
+            "economics": {
+                "status": econ_status,
+                "extracted_metrics": extracted_metrics,
+                "gaps": econ_gaps
+            }
+        },
+        "completeness_score": comp_score,
+        "clarifying_questions": clarifying_questions
+    }
+
+def get_best_available_model() -> str:
+    """Query the Ollama api/tags endpoint to dynamically choose the best available model."""
+    base_url = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434")
+    url = base_url.rstrip("/") + "/api/tags"
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            models = [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+            logger.info(f"Available local Ollama models: {models}")
+            
+            # Prioritized list of models
+            priority_list = [
+                "llama3.1:8b", "llama3.1",
+                "llama3:8b", "llama3",
+                "qwen2.5:7b", "qwen2.5:3b", "qwen2.5:1.5b",
+                "gemma2:9b", "gemma2:2b",
+                "mistral:7b", "phi3"
+            ]
+            for p_model in priority_list:
+                for m in models:
+                    if m == p_model or m.startswith(p_model + ":") or p_model.startswith(m + ":"):
+                        logger.info(f"Selected Ollama model based on priority: {m}")
+                        return m
+            if models:
+                logger.info(f"No prioritized model found. Using first available: {models[0]}")
+                return models[0]
+    except Exception as e:
+        logger.warning(f"Ollama dynamic model check failed: {e}. Defaulting to 'llama3'.")
+    return "llama3"
+
 def query_ollama_template(text: str) -> Dict[str, Any]:
     """Query local Llama 3 via Ollama on the host machine to get structured document segments."""
-    url = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434") + "/api/generate"
+    base_url = os.getenv("OLLAMA_URL", "http://host.docker.internal:11434")
+    url = base_url.rstrip("/") + "/api/generate"
+    
+    # Choose model dynamically
+    model_name = get_best_available_model()
+    logger.info(f"Ollama analysis using model: {model_name}")
     
     system_prompt = (
-        "Ты — старший технический аналитик (CTO). Твоя задача — проанализировать неструктурированную ИТ-документацию "
-        "и извлечь из нее ключевую информацию, нормализовав ее в заданный JSON-формат.\n"
-        "Выдели следующие разделы:\n"
-        "1. meta_info (бюджет/budget, сроки/timeline, доменная область проекта/domain).\n"
-        "2. sections:\n"
-        "   - summary: краткое общее резюме проекта (1-2 абзаца).\n"
-        "   - architecture_and_tech: описание архитектуры, используемых технологий, баз данных, очередей сообщений и т.д.\n"
-        "   - risks_and_security: описание рисков, возможных сбоев, уязвимостей, требований к ИБ и стабильности.\n"
-        "   - business_and_finance: описание бизнес-целей, бюджета, сроков, окупаемости и коммерческой ценности.\n"
-        "Верни ответ СТРОГО в формате JSON без разметки markdown: \n"
+        "Ты — модуль анализа технической документации ИТ-проектов в составе платформы DocuAudit AI.\n"
+        "Твоя задача — извлечь структурированные данные из произвольного текста документа, "
+        "сопоставить их с эталонным шаблоном ТЗ и выявить пробелы (gaps), которые могут "
+        "повлиять на оценку рисков и прибыльности проекта.\n\n"
+        "Эталонная структура (целевой шаблон) покрывает 4 раздела:\n"
+        "1. Суть проекта и цели (purpose) — маркеры: цель проекта, создание платформы, разработка системы.\n"
+        "2. Технологический стек (tech_stack) — конкретные технологии + описание архитектуры.\n"
+        "3. Ключевые риски (risks) — маркеры: риск, угроза, проблема, сбой, задержка интеграции.\n"
+        "4. Экономический потенциал (economics) — маркеры: числовые показатели с %, окупаемость, выгоды.\n\n"
+        "Дополнительные метаданные: название проекта, дата документа, дедлайн, бюджет (нормализуй в формат 'число + валюта').\n\n"
+        "Правила:\n"
+        "- Определяй принадлежность фрагментов по смыслу.\n"
+        "- Не выдумывай данные, которых нет в тексте. Если информация отсутствует, указывай null или \"missing\".\n"
+        "- Числовые показатели извлекай точно, без округления.\n"
+        "- Вердикт и gaps формулируй на русском языке.\n"
+        "- Расчет completeness_score (от 0.0 до 100.0) = (вес каждого раздела * степень заполненности) * 100.\n"
+        "  Веса: Суть=0.2, Стек=0.2, Риски=0.3, Экономика=0.3. Степень заполненности: present=1.0, partial=0.5, missing=0.0.\n"
+        "- Сформулируй 1-3 конкретных уточняющих вопроса для пользователя, чтобы закрыть самые критичные пробелы "
+        "(приоритет — разделы Риски и Экономика).\n\n"
+        "Верни ответ СТРОГО в формате JSON без разметки markdown:\n"
         "{\n"
-        "  \"meta_info\": {\n"
-        "    \"budget\": \"...\",\n"
-        "    \"timeline\": \"...\",\n"
-        "    \"domain\": \"...\"\n"
+        "  \"metadata\": {\n"
+        "    \"project_name\": \"string | null\",\n"
+        "    \"document_date\": \"string | null\",\n"
+        "    \"deadline\": \"string | null\",\n"
+        "    \"budget\": \"string | null\"\n"
         "  },\n"
         "  \"sections\": {\n"
-        "    \"summary\": \"...\",\n"
-        "    \"architecture_and_tech\": \"...\",\n"
-        "    \"risks_and_security\": \"...\",\n"
-        "    \"business_and_finance\": \"...\"\n"
-        "  }\n"
+        "    \"purpose\": {\n"
+        "      \"status\": \"present | partial | missing\",\n"
+        "      \"extracted_text\": \"string | null\",\n"
+        "      \"gaps\": [\"string\"]\n"
+        "    },\n"
+        "    \"tech_stack\": {\n"
+        "      \"status\": \"present | partial | missing\",\n"
+        "      \"extracted_technologies\": [\"string\"],\n"
+        "      \"architecture_description\": \"string | null\",\n"
+        "      \"gaps\": [\"string\"]\n"
+        "    },\n"
+        "    \"risks\": {\n"
+        "      \"status\": \"present | partial | missing\",\n"
+        "      \"extracted_risks\": [\n"
+        "        {\"text\": \"string\", \"category\": \"string | null\"}\n"
+        "      ],\n"
+        "      \"gaps\": [\"string\"]\n"
+        "    },\n"
+        "    \"economics\": {\n"
+        "      \"status\": \"present | partial | missing\",\n"
+        "      \"extracted_metrics\": [\n"
+        "        {\"metric\": \"string\", \"value\": \"string\"}\n"
+        "      ],\n"
+        "      \"gaps\": [\"string\"]\n"
+        "    }\n"
+        "  },\n"
+        "  \"completeness_score\": 0.0,\n"
+        "  \"clarifying_questions\": [\"string\"]\n"
         "}"
     )
 
-    prompt = f"Системная инструкция:\n{system_prompt}\n\nАнализируемый документ:\n{text}"
+    # Truncate text to 20,000 characters to prevent Ollama timeouts and OOMs
+    truncated_text = text[:20000]
+    prompt = f"Системная инструкция:\n{system_prompt}\n\nАнализируемый документ:\n{truncated_text}"
     
     payload = {
-        "model": "llama3",
+        "model": model_name,
         "prompt": prompt,
         "format": "json",
         "stream": False,
         "options": {
-            "temperature": 0.2
+            "temperature": 0.2,
+            "num_predict": 2048,
+            "num_ctx": 8192
         }
     }
     
@@ -528,7 +887,8 @@ def query_ollama_template(text: str) -> Dict[str, Any]:
         headers={'Content-Type': 'application/json'}
     )
     
-    with urllib.request.urlopen(req, timeout=60) as response:
+    # Increase HTTP read timeout to 90 seconds in Python as well, to allow slow inference
+    with urllib.request.urlopen(req, timeout=90) as response:
         res_data = json.loads(response.read().decode('utf-8'))
         response_text = res_data.get("response", "")
         return json.loads(response_text)
@@ -552,30 +912,59 @@ async def analyze(req: AnalysisRequest, request: Request):
 
     # 1. Extract Entities
     entities = heuristic_ner(req.text)
+    detected_techs = sorted(list(set(ent["text"] for ent in entities if ent["type"] == "Technology")))
 
     # 2. Phase 1: Preprocessing / Segmentation
     is_llama = False
     norm_doc = None
+    gap_analysis_data = None
     try:
         logger.info("Attempting Llama 3 analysis via Ollama...")
         norm_doc = query_ollama_template(req.text)
         logger.info("✓ Llama 3 successfully parsed the document into template!")
         is_llama = True
+        gap_analysis_data = norm_doc
+        
+        # Populate the old fields for ruBERT scoring
+        budget_val = norm_doc.get("metadata", {}).get("budget") or "Не указано"
+        timeline_val = norm_doc.get("metadata", {}).get("deadline") or "Не указано"
+        
+        # Determine domain
+        domain_val = "Не указано"
+        text_lower = req.text.lower()
+        if any(w in text_lower for w in ["e-commerce", "интернет-магазин", "ритейл", "торговл", "маркетплейс", "товар"]):
+            domain_val = "E-commerce / Ритейл"
+        elif any(w in text_lower for w in ["финтех", "банк", "платёж", "финанс", "кредит", "транзакц"]):
+            domain_val = "Финтех / Банки"
+        elif any(w in text_lower for w in ["логистик", "доставк", "склад", "транспорт", "груз"]):
+            domain_val = "Логистика / Транспорт"
+        elif any(w in text_lower for w in ["медицин", "здрав", "клиник", "врач", "пациент"]):
+            domain_val = "Медицина / Здравоохранение"
+            
+        summary_text = norm_doc.get("sections", {}).get("purpose", {}).get("extracted_text") or ""
+        arch_text = norm_doc.get("sections", {}).get("tech_stack", {}).get("architecture_description") or ""
+        
+        risk_list = norm_doc.get("sections", {}).get("risks", {}).get("extracted_risks", [])
+        risk_text = " ".join([r.get("text", "") for r in risk_list if isinstance(r, dict)])
+        
+        econ_list = norm_doc.get("sections", {}).get("economics", {}).get("extracted_metrics", [])
+        profit_text = " ".join([f"{e.get('metric', '')}: {e.get('value', '')}" for e in econ_list if isinstance(e, dict)])
     except Exception as e:
         logger.warning(f"Llama 3 template parsing failed or timed out: {e}. Falling back to heuristic segmentation.")
         norm_doc = fallback_segmentation(req.text)
+        meta_data = norm_doc.get("meta_info", {})
+        budget_val = meta_data.get("budget", "Не указано") or "Не указано"
+        timeline_val = meta_data.get("timeline", "Не указано") or "Не указано"
+        domain_val = meta_data.get("domain", "Не указано") or "Не указано"
 
-    # Extract parsed fields
-    meta_data = norm_doc.get("meta_info", {})
-    budget_val = meta_data.get("budget", "Не указано") or "Не указано"
-    timeline_val = meta_data.get("timeline", "Не указано") or "Не указано"
-    domain_val = meta_data.get("domain", "Не указано") or "Не указано"
-
-    sections = norm_doc.get("sections", {})
-    summary_text = sections.get("summary", "") or ""
-    arch_text = sections.get("architecture_and_tech", "") or ""
-    risk_text = sections.get("risks_and_security", "") or ""
-    profit_text = sections.get("business_and_finance", "") or ""
+        sections = norm_doc.get("sections", {})
+        summary_text = sections.get("summary", "") or ""
+        arch_text = sections.get("architecture_and_tech", "") or ""
+        risk_text = sections.get("risks_and_security", "") or ""
+        profit_text = sections.get("business_and_finance", "") or ""
+        
+        # Build gap analysis via heuristics
+        gap_analysis_data = generate_fallback_gap_analysis(req.text, detected_techs, entities)
 
     # Ensure we fall back to raw sentences if Llama returned empty strings
     if not summary_text.strip():
@@ -708,7 +1097,8 @@ async def analyze(req: AnalysisRequest, request: Request):
         executive_summary=exec_summary,
         tech_stack=TechStack(detected=detected_techs, missing=missing_techs),
         metrics=metrics,
-        entities=entities
+        entities=entities,
+        gap_analysis=gap_analysis_data
     )
 
 if __name__ == "__main__":
