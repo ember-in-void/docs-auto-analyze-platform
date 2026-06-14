@@ -42,10 +42,12 @@ export default function NerHighlighter({ text = '', entities = [] }) {
 
     // Entity tag
     const colors = ENTITY_COLORS[entity.type] || ENTITY_COLORS.Technology
+    const safeText = entity.text.toLowerCase().replace(/[^a-zа-я0-9]/g, '-')
     parts.push(
       <span
         key={`e-${i}`}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
+        id={`entity-${safeText}`}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-sm font-medium border ${colors.bg} ${colors.text} ${colors.border} transition-all duration-300`}
         title={entity.type}
       >
         {entity.text}

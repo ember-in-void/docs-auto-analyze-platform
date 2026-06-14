@@ -47,3 +47,13 @@
   .animation-delay-400 { animation-delay: 0.4s; }
   .animation-delay-600 { animation-delay: 0.6s; }
 }
+
+@keyframes pulseGlow {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 240, 255, 0.7); background-color: rgba(0, 240, 255, 0.2); }
+  50% { transform: scale(1.08); box-shadow: 0 0 15px 8px rgba(0, 240, 255, 0.4); background-color: rgba(0, 240, 255, 0.4); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0, 240, 255, 0); }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+}

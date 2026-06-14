@@ -23,6 +23,39 @@ export default function WorkspacePage() {
   const [analysisResult, setAnalysisResult] = useState(null)
   const [activeTab, setActiveTab] = useState('audit')
 
+  const highlightAndScrollToEntity = (entityText) => {
+    if (!entityText) return
+    setActiveTab('overview')
+    setTimeout(() => {
+      // 1. Try exact matching on normalized ID
+      const safeText = entityText.toLowerCase().replace(/[^a-zа-я0-9]/g, '-')
+      let element = document.getElementById(`entity-${safeText}`)
+      
+      // 2. Fallback: fuzzy/substring matching on text contents of all entity spans
+      if (!element) {
+        const allSpans = document.querySelectorAll('[id^="entity-"]')
+        const targetClean = entityText.toLowerCase().trim()
+        
+        for (const span of allSpans) {
+          const spanText = span.textContent.toLowerCase().trim()
+          if (spanText && targetClean && (spanText.includes(targetClean) || targetClean.includes(spanText))) {
+            element = span
+            break
+          }
+        }
+      }
+      
+      // 3. Perform scroll & glow animation if element found
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        element.classList.add('animate-pulse-glow')
+        setTimeout(() => {
+          element.classList.remove('animate-pulse-glow')
+        }, 1500)
+      }
+    }, 150)
+  }
+
   useEffect(() => {
     if (!projectId) return
 
@@ -514,18 +547,56 @@ export default function WorkspacePage() {
                         bg: 'bg-emerald/5 border-emerald/10',
                         textClr: 'text-emerald'
                       }
-                    ].map((item, idx) => (
-                      <div key={idx} className={`p-4 border rounded-xl ${item.bg}`}>
-                        <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider block mb-1">
-                          {item.label}
-                        </span>
-                        <span className={`text-xs font-semibold ${item.textClr} block truncate`}>
-                          {item.value || 'Не указано'}
-                        </span>
-                      </div>
-                    ))}
+                    ].map((item, idx) => {
+                      const isClickable = !!item.value && (idx === 2 || idx === 3); // Deadline (2) and Budget (3)
+                      return (
+                        <div 
+                          key={idx} 
+                          onClick={() => isClickable && highlightAndScrollToEntity(item.value)}
+                          className={`p-4 border rounded-xl transition-all duration-300 ${item.bg} ${
+                            isClickable 
+                              ? 'cursor-pointer hover:scale-[1.02] hover:border-electric/40 hover:bg-electric/5' 
+                              : ''
+                          }`}
+                          title={isClickable ? 'Нажмите, чтобы найти в тексте ТЗ' : undefined}
+                        >
+                          <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider block mb-1 flex items-center justify-between">
+                            {item.label}
+                            {isClickable && (
+                              <span className="text-[9px] text-electric opacity-60 font-normal normal-case">
+                                Найти 🔍
+                              </span>
+                            )}
+                          </span>
+                          <span className={`text-xs font-semibold ${item.textClr} block truncate`}>
+                            {item.value || 'Не указано'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
+
+                {/* 2.5 Detected Organizations */}
+                {entities.some(e => e.type === 'Organization') && (
+                  <div className="bg-surface border border-white/5 rounded-2xl p-8 mt-6">
+                    <h3 className="text-sm uppercase tracking-wider text-gray-500 font-bold mb-4">
+                      🏢 Извлеченные организации
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {Array.from(new Set(entities.filter(e => e.type === 'Organization').map(e => e.text))).map(org => (
+                        <span
+                          key={org}
+                          onClick={() => highlightAndScrollToEntity(org)}
+                          className="px-2.5 py-1 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium text-[11px] cursor-pointer hover:bg-purple-500/20 transition-all hover:scale-105"
+                          title="Нажмите, чтобы найти в тексте ТЗ"
+                        >
+                          {org}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Helper function to get badge */}
                 {(() => {
@@ -603,7 +674,12 @@ export default function WorkspacePage() {
                               <div className="flex flex-wrap gap-2">
                                 {gapData?.sections?.tech_stack?.extracted_technologies?.length > 0 ? (
                                   gapData.sections.tech_stack.extracted_technologies.map(tech => (
-                                    <span key={tech} className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium text-[11px]">
+                                    <span 
+                                      key={tech} 
+                                      onClick={() => highlightAndScrollToEntity(tech)}
+                                      className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium text-[11px] cursor-pointer hover:bg-blue-500/20 transition-all hover:scale-105"
+                                      title="Нажмите, чтобы найти в тексте ТЗ"
+                                    >
                                       {tech}
                                     </span>
                                   ))
